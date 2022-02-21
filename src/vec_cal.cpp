@@ -1,3 +1,5 @@
+#include <math.h>
+#include <algorithm>
 #include "types.hpp"
 
 real Sqr(real x) {
@@ -15,10 +17,6 @@ void vecSet(vecR &vec, real cx, real cy) {
 
 void vecSetAll(vecR &vec, real c) {
 	vecSet(vec, c, c);
-}
-
-void vecSetZero(vecR &vec) {
-	vecSetAll(vec, 0);
 }
 
 void vecAdd(vecR &sum, vecR u, vecR v) {
@@ -68,10 +66,6 @@ void vecScaleAdd(vecR &vec, vecR u, real s, vecR v) {
 	vec.y = u.y + s * v.y;
 }
 
-void vecSelfScaleAdd(vecR &u, real s, vecR v) {
-	vecScaleAdd(u, u, s, v);
-}
-
 void vecWrapAll(vecR &vec, vecR region) {
 	if (vec.x >= 0.5 * region.x) {
 		vec.x -= region.x;
@@ -83,4 +77,19 @@ void vecWrapAll(vecR &vec, vecR region) {
 	} else if (vec.y < -0.5 * region.y) {
 		vec.y += region.y;
 	}
+}
+
+void propZero(Prop &prop) {
+	prop.sum = 0;
+	prop.sum2 = 0;
+}
+
+void propAccum(Prop &prop) {
+	prop.sum += prop.val;
+	prop.sum2 += Sqr(prop.val);
+}
+
+void propAvg(Prop &prop, int n) {
+	prop.sum /= n;
+	prop.sum2 = sqrt(std::max(prop.sum2/n - Sqr(prop.sum), 0.0));
 }
