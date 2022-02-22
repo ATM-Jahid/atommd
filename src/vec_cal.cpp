@@ -15,10 +15,6 @@ void vecSet(vecR &vec, real cx, real cy) {
 	vec.y = cy;
 }
 
-void vecSetAll(vecR &vec, real c) {
-	vecSet(vec, c, c);
-}
-
 void vecAdd(vecR &sum, vecR u, vecR v) {
 	sum.x = u.x + v.x;
 	sum.y = u.y + v.y;

@@ -5,10 +5,6 @@ typedef struct {
 } vecR;
 
 typedef struct {
-	int x, y;
-} vecI;
-
-typedef struct {
 	vecR r, vel, acc;
 } Mol;
 
