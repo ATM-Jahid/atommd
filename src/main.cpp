@@ -179,7 +179,7 @@ void evalProps() {
 
 	kinEnergy.val = 0.5 * v2sum / nMol;
 	totEnergy.val = kinEnergy.val + uSum / nMol;
-	pressure.val = density * (v2sum + virSum) / (nMol + nDim);
+	pressure.val = density * (v2sum + virSum) / (nMol * nDim);
 }
 
 void printSummary() {
