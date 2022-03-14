@@ -17,24 +17,26 @@ void printSummary();
 // global variables
 real rCut, density, velMag, temperature, deltaT, timeNow;
 real uSum, virSum;
-vecR initUcell, region, velSum;
+vecR cells, initUcell, region, velSum;
 int nMol, nDim, stepCount, stepLimit, stepAvg;
 Prop kinEnergy, totEnergy, pressure;
 Mol *mol;
+int *cellList;
 
 int main(int argc, char **argv) {
 	//getInputs(argc, argv);
 
-	nDim = 2;
-	density = 0.8;
-	temperature = 1;
+	nDim = 3;
+	// input temp. and density from user
+	cin >> temperature >> density;
 	initUcell = {.x = 20, .y = 20};
 	stepLimit = 10000;
 	stepAvg = 100;
-	deltaT = 0.005;
+	deltaT = 0.001;
 
 	setParams();
 	mol = new Mol[nMol];
+	cellList = new int[vecProd(cells) + nMol];
 
 	initAtoms();
 	accumProps(0);
@@ -44,6 +46,7 @@ int main(int argc, char **argv) {
 	}
 
 	delete[] mol;
+	delete[] cellList;
 	return 0;
 }
 
@@ -161,7 +164,7 @@ void computeForces() {
 				fcVal = 48.0 * rri3 * (rri3 - 0.5) * rri;
 				vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal, dr);
 				vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal, dr);
-				uSum += 4.0 * rri3 * (rri3 - 1.0) + 1.0;
+				uSum += 4.0 * rri3 * (rri3 - 1.0);
 				virSum += fcVal * rr;
 			}
 		}
