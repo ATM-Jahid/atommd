@@ -1,7 +1,7 @@
 typedef double real;
 
 typedef struct {
-	real x, y;
+	real x, y, z;
 } vecR;
 
 typedef struct {
