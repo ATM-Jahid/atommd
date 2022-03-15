@@ -1,7 +1,7 @@
 real Sqr(real);
 real Cub(real);
 
-void vecSet(vecR &, real, real);
+void vecSet(vecR &, real, real, real);
 void vecAdd(vecR &, vecR, vecR);
 void vecSub(vecR &, vecR, vecR);
 void vecMul(vecR &, vecR, vecR);

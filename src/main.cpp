@@ -28,15 +28,16 @@ int main(int argc, char **argv) {
 
 	nDim = 3;
 	// input temp. and density from user
-	cin >> temperature >> density;
-	initUcell = {.x = 20, .y = 20};
+	std::cin >> temperature >> density;
+	rCut = 3;
+	initUcell = {5, 5, 5};
 	stepLimit = 10000;
 	stepAvg = 100;
 	deltaT = 0.001;
 
 	setParams();
 	mol = new Mol[nMol];
-	cellList = new int[vecProd(cells) + nMol];
+	cellList = new int[int(vecProd(cells)) + nMol];
 
 	initAtoms();
 	accumProps(0);
@@ -51,9 +52,8 @@ int main(int argc, char **argv) {
 }
 
 void setParams() {
-	rCut = pow(2, 1/6.0);
-	vecScaleCopy(region, 1.0/sqrt(density), initUcell);
-	nMol = vecProd(initUcell);
+	vecScaleCopy(region, 1.0/pow(density/4.0, 1/3.0), initUcell);
+	nMol = 4 * vecProd(initUcell);
 	velMag = sqrt(nDim * (1.0 - 1.0/nMol) * temperature);
 }
 
@@ -61,13 +61,31 @@ void initAtoms() {
 	vecR c, gap;
 	int n = 0;
 	vecDiv(gap, region, initUcell);
-	for (int ny = 0; ny < initUcell.y; ny++) {
-		for (int nx = 0; nx < initUcell.x; nx++) {
-			vecSet(c, nx+0.5, ny+0.5);
-			vecMul(c, c, gap);
-			vecScaleAdd(c, c, -0.5, region);
-			mol[n].r = c;
-			n++;
+	for (int nz = 0; nz < initUcell.z; nz++) {
+		for (int ny = 0; ny < initUcell.y; ny++) {
+			for (int nx = 0; nx < initUcell.x; nx++) {
+				vecSet(c, nx+0.25, ny+0.25, nz+0.25);
+				vecMul(c, c, gap);
+				vecScaleAdd(c, c, -0.5, region);
+				for (int j = 0; j < 4; j++) {
+					mol[n].r = c;
+					switch (j) {
+						case 0:
+							mol[n].r.x += 0.5 * gap.x;
+							mol[n].r.y += 0.5 * gap.y;
+							break;
+						case 1:
+							mol[n].r.y += 0.5 * gap.y;
+							mol[n].r.z += 0.5 * gap.z;
+							break;
+						case 2:
+							mol[n].r.z += 0.5 * gap.z;
+							mol[n].r.x += 0.5 * gap.x;
+							break;
+					}
+					n++;
+				}
+			}
 		}
 	}
 
