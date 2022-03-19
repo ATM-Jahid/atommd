@@ -1,4 +1,4 @@
-#include <math.h>
+#include <cmath>
 #include <algorithm>
 #include "types.hpp"
 
@@ -100,5 +100,5 @@ void propAccum(Prop &prop) {
 
 void propAvg(Prop &prop, int n) {
 	prop.sum /= n;
-	prop.sum2 = sqrt(std::max(prop.sum2/n - Sqr(prop.sum), 0.0));
+	prop.sum2 = std::sqrt(std::max(prop.sum2/n - Sqr(prop.sum), 0.0));
 }

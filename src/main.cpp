@@ -1,12 +1,13 @@
 #include <iostream>
-#include <math.h>
-#include <stdlib.h>
+#include <cmath>
+#include <random>
 
 #include "types.hpp"
 #include "vec_cal.hpp"
 
 void setParams();
 void initAtoms();
+void rescaleVels();
 void accumProps(int);
 void singleStep();
 void leapfrogStep(int);
@@ -18,7 +19,7 @@ void printSummary();
 real rCut, density, velMag, temperature, deltaT, timeNow;
 real uSum, virSum;
 vecR cells, initUcell, region, velSum;
-int nMol, nDim, stepCount, stepLimit, stepAvg;
+int nMol, nDim, stepCount, stepEquil, stepAdjTemp, stepLimit, stepAvg;
 Prop kinEnergy, totEnergy, pressure;
 Mol *mol;
 int *cellList;
@@ -28,11 +29,16 @@ int main(int argc, char **argv) {
 
 	nDim = 3;
 	// input temp. and density from user
-	std::cin >> temperature >> density;
+	std::cout << "Temperature: ";
+	std::cin >> temperature;
+	std::cout << "Density: ";
+	std::cin >> density;
 	rCut = 3;
 	initUcell = {5, 5, 5};
-	stepLimit = 10000;
-	stepAvg = 100;
+	stepLimit = 5000;
+	stepEquil = 1000;
+	stepAdjTemp = 25;
+	stepAvg = 50;
 	deltaT = 0.001;
 
 	setParams();
@@ -52,9 +58,9 @@ int main(int argc, char **argv) {
 }
 
 void setParams() {
-	vecScaleCopy(region, 1.0/pow(density/4.0, 1/3.0), initUcell);
+	vecScaleCopy(region, 1.0/std::pow(density/4.0, 1/3.0), initUcell);
 	nMol = 4 * vecProd(initUcell);
-	velMag = sqrt(nDim * (1.0 - 1.0/nMol) * temperature);
+	//velMag = std::sqrt(nDim * (1.0 - 1.0/nMol) * temperature);
 }
 
 void initAtoms() {
@@ -89,20 +95,38 @@ void initAtoms() {
 		}
 	}
 
-	vecSet(velSum, 0, 0);
+	// radom velocity generator
+	std::default_random_engine rand_gen;
+	std::normal_distribution<real> normal_dist(0.0, 1.0);
+
+	vecSet(velSum, 0, 0, 0);
 	for (int i = 0; i < nMol; i++) {
-		// radom velocity generator
-		real sdf = (rand() % 1000) / 999.9 * 6.283185;
-		vecSet(mol[i].vel, cos(sdf), sin(sdf));
-		vecScale(mol[i].vel, velMag);
+		vecSet(mol[i].vel, normal_dist(rand_gen),
+				normal_dist(rand_gen), normal_dist(rand_gen));
+		//vecScale(mol[i].vel, velMag);
 		vecAdd(velSum, velSum, mol[i].vel);
 		// assign zero init. acceleration
-		vecSet(mol[i].acc, 0, 0);
+		vecSet(mol[i].acc, 0, 0, 0);
 	}
 
 	// account for COM shift
 	for (int i = 0; i < nMol; i++) {
 		vecScaleAdd(mol[i].vel, mol[i].vel, -1.0/nMol, velSum);
+	}
+
+	// adjust temperature
+	rescaleVels();
+}
+
+void rescaleVels() {
+	real velSqSum = 0;
+	for (int i = 0; i < nMol; i++) {
+		velSqSum += vecLenSq(mol[i].vel);
+	}
+
+	real lambda = std::sqrt(3 * (nMol - 1) * temperature / velSqSum);
+	for (int i = 0; i < nMol; i++) {
+		vecScale(mol[i].vel, lambda);
 	}
 }
 
@@ -140,6 +164,11 @@ void singleStep() {
 	evalProps();
 	accumProps(1);
 
+	// rescale velocities
+	if ((stepCount < stepEquil) && !(stepCount % stepAdjTemp)) {
+		rescaleVels();
+	}
+
 	if (stepCount % stepAvg == 0) {
 		accumProps(2);
 		printSummary();
@@ -166,7 +195,7 @@ void computeForces() {
 
 	rrCut = Sqr(rCut);
 	for (int i = 0; i < nMol; i++) {
-		vecSet(mol[i].acc, 0, 0);
+		vecSet(mol[i].acc, 0, 0, 0);
 	}
 
 	uSum = 0;
@@ -190,7 +219,7 @@ void computeForces() {
 }
 
 void evalProps() {
-	vecSet(velSum, 0, 0);
+	vecSet(velSum, 0, 0, 0);
 	real v2sum = 0;
 
 	for (int i = 0; i < nMol; i++) {
@@ -205,7 +234,7 @@ void evalProps() {
 
 void printSummary() {
 	std::cout << stepCount << '\t' << timeNow << '\t'
-		<< velSum.x/nMol << '\t' << velSum.y/nMol << '\t'
+		<< std::sqrt(vecLenSq(velSum))/nMol << '\t'
 		<< kinEnergy.sum << '\t' << totEnergy.sum << '\t'
 		<< pressure.sum << '\n';
 }
