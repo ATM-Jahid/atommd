@@ -16,6 +16,18 @@ void vecSet(vecR &vec, real cx, real cy, real cz) {
 	vec.z = cz;
 }
 
+void vecRound(vecR &vec) {
+	vec.x = int(vec.x+0.5);
+	vec.y = int(vec.y+0.5);
+	vec.z = int(vec.z+0.5);
+}
+
+void vecFloor(vecR &vec) {
+	vec.x = int(vec.x);
+	vec.y = int(vec.y);
+	vec.z = int(vec.z);
+}
+
 void vecAdd(vecR &sum, vecR u, vecR v) {
 	sum.x = u.x + v.x;
 	sum.y = u.y + v.y;
@@ -70,6 +82,10 @@ void vecScaleAdd(vecR &vec, vecR u, real s, vecR v) {
 	vec.z = u.z + s * v.z;
 }
 
+int vecLinear(vecR u, vecR v) {
+	return (u.z * v.y * v.x) + (u.y * v.x) + u.x + 0.5;
+}
+
 void vecWrapAll(vecR &vec, vecR region) {
 	if (vec.x >= 0.5 * region.x) {
 		vec.x -= region.x;
@@ -85,6 +101,30 @@ void vecWrapAll(vecR &vec, vecR region) {
 		vec.z -= region.z;
 	} else if (vec.z < -0.5 * region.z) {
 		vec.z += region.z;
+	}
+}
+
+void cellWrapAll(vecR &vec, vecR &shift, vecR cells, vecR region) {
+	if (vec.x >= cells.x) {
+		vec.x = 0;
+		shift.x = region.x;
+	} else if (vec.x < 0) {
+		vec.x = cells.x - 1;
+		shift.x = - region.x;
+	}
+	if (vec.y >= cells.y) {
+		vec.y = 0;
+		shift.y = region.y;
+	} else if (vec.y < 0) {
+		vec.y = cells.y - 1;
+		shift.y = - region.y;
+	}
+	if (vec.z >= cells.z) {
+		vec.z = 0;
+		shift.z = region.z;
+	} else if (vec.z < 0) {
+		vec.z = cells.z - 1;
+		shift.z = - region.z;
 	}
 }
 

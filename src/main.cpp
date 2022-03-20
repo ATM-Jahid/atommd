@@ -5,6 +5,8 @@
 #include "types.hpp"
 #include "vec_cal.hpp"
 
+#define CELL_LIST
+
 void setParams();
 void initAtoms();
 void rescaleVels();
@@ -24,7 +26,7 @@ Prop kinEnergy, totEnergy, pressure;
 Mol *mol;
 int *cellList;
 
-int main(int argc, char **argv) {
+int main() {
 	//getInputs(argc, argv);
 
 	nDim = 3;
@@ -43,7 +45,7 @@ int main(int argc, char **argv) {
 
 	setParams();
 	mol = new Mol[nMol];
-	cellList = new int[int(vecProd(cells)) + nMol];
+	cellList = new int[int(vecProd(cells)+0.5) + nMol];
 
 	initAtoms();
 	accumProps(0);
@@ -59,6 +61,8 @@ int main(int argc, char **argv) {
 
 void setParams() {
 	vecScaleCopy(region, 1.0/std::pow(density/4.0, 1/3.0), initUcell);
+	vecScaleCopy(cells, 1.0/rCut, region);
+	vecRound(cells);
 	nMol = 4 * vecProd(initUcell);
 	//velMag = std::sqrt(nDim * (1.0 - 1.0/nMol) * temperature);
 }
@@ -190,16 +194,71 @@ void leapfrogStep(int part) {
 }
 
 void computeForces() {
-	vecR dr;
+	vecR dr, invWid, rs, shift, cc, m1v, m2v;
+	vecR vecOffset[] = {{0,0,0}, {1,0,0}, {1,1,0}, {0,1,0}, {-1,1,0}, {0,0,1}, {1,0,1},
+			{1,1,1}, {0,1,1}, {-1,1,1}, {-1,0,1}, {-1,-1,1}, {0,-1,1}, {1,-1,1}};
 	real fcVal, rr, rrCut, rri, rri3;
 
 	rrCut = Sqr(rCut);
+	// resetting the acc. values since they are incremented later on
 	for (int i = 0; i < nMol; i++) {
 		vecSet(mol[i].acc, 0, 0, 0);
 	}
-
 	uSum = 0;
 	virSum = 0;
+
+#ifdef CELL_LIST
+	vecDiv(invWid, cells, region);
+	// initialize the cell values to -1
+	for (int i = nMol; i < nMol + vecProd(cells); i++) {
+		cellList[i] = -1;
+	}
+
+	// make a linked list
+	for (int i = 0; i < nMol; i++) {
+		vecScaleAdd(rs, mol[i].r, 0.5, region);
+		vecMul(cc, rs, invWid);
+		vecFloor(cc);
+		int c = vecLinear(cc, cells) + nMol;
+		cellList[i] = cellList[c];
+		cellList[c] = i;
+	}
+
+	for (int m1z = 0; m1z < cells.z; m1z++) {
+		for (int m1y = 0; m1y < cells.y; m1y++) {
+			for (int m1x = 0; m1x < cells.x; m1x++) {
+				vecSet(m1v, m1x, m1y, m1z);
+				int m1 = vecLinear(m1v, cells) + nMol;
+				for (int Noff = 0; Noff < 14; Noff++) {
+					vecAdd(m2v, m1v, vecOffset[Noff]);
+					vecSet(shift, 0, 0, 0);
+					cellWrapAll(m2v, shift, cells, region);
+					int m2 = vecLinear(m2v, cells) + nMol;
+					for (int j1 = cellList[m1]; j1 > 0; j1 = cellList[j1]) {
+						for (int j2 = cellList[m2]; j2 > 0; j2 = cellList[j2]) {
+							if (m1 != m2 || j1 > j2) {
+								vecSub(dr, mol[j1].r, mol[j2].r);
+								vecSub(dr, dr, shift);
+								rr = vecLenSq(dr);
+								if (rr < rrCut) {
+									rri = 1.0 / rr;
+									rri3 = Cub(rri);
+									fcVal = 48.0 * rri3 * (rri3 - 0.5) * rri;
+									vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal, dr);
+									vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal, dr);
+									uSum += 4.0 * rri3 * (rri3 - 1.0);
+									virSum += fcVal * rr;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+#endif
+
+#ifndef CELL_LIST
 	for (int j1 = 0; j1 < nMol - 1; j1++) {
 		for (int j2 = j1+1; j2 < nMol; j2++) {
 			vecSub(dr, mol[j1].r, mol[j2].r);
@@ -216,6 +275,7 @@ void computeForces() {
 			}
 		}
 	}
+#endif
 }
 
 void evalProps() {
