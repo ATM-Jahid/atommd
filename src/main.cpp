@@ -2,14 +2,10 @@
 #include <cmath>
 #include <random>
 #include <algorithm>
+#include <chrono>
 
 #include "types.hpp"
 #include "vec_cal.hpp"
-
-//#define ALL_PAIR
-//#define CELL_LIST
-#define NEIGH_LIST
-#define NEIGH_CELL
 
 void setParams();
 void initAtoms();
@@ -32,23 +28,37 @@ Mol *mol;
 int *cellList;
 real dispHi, rNebrShell;
 int *nebrTab, nebrNow, nebrTabFac, nebrTabLen, nebrTabMax;
+int num_atoms, cell_list = 0, neigh_list = 0;
 
 int main() {
-	// input temp. and density from user
+	// program start time
+	auto start = std::chrono::system_clock::now();
+
+	nDim = 3;
+	rCut = 3;
+	stepLimit = 10000;
+	stepEquil = 5000;
+	stepAdjTemp = 20;
+	stepAvg = 50;
+	deltaT = 0.001;
+
+	// input from user
 	std::cout << "Temperature: ";
 	std::cin >> temperature;
 	std::cout << "Density: ";
 	std::cin >> density;
+	std::cout << "Number of atoms: ";
+	std::cin >> num_atoms;
+	real num_unit_cell = int(std::pow(num_atoms/4, 1/3.0)+0.5);
+	initUcell = {num_unit_cell, num_unit_cell, num_unit_cell};
 
-	nDim = 3;
-	initUcell = {5, 5, 5};
-	rCut = 3;
-	stepLimit = 5000;
-	stepEquil = 1000;
-	stepAdjTemp = 25;
-	stepAvg = 50;
-	deltaT = 0.001;
+	// which method to use
+	std::cout << "Cell subdivision (0 or 1): ";
+	std::cin >> cell_list;
+	std::cout << "Neighbor list (0 or 1): ";
+	std::cin >> neigh_list;
 
+	// for neighbor list
 	nebrTabFac = 100;
 	rNebrShell = 0.4;
 	nebrNow = 1;
@@ -68,6 +78,12 @@ int main() {
 	delete[] mol;
 	delete[] cellList;
 	delete[] nebrTab;
+
+	// program end time
+	auto end = std::chrono::system_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(end-start);
+	std::cout << "Wall time: " << elapsed.count() << " seconds\n";
+
 	return 0;
 }
 
@@ -75,7 +91,7 @@ void setParams() {
 	vecScaleCopy(region, 1.0/std::pow(density/4.0, 1/3.0), initUcell);
 	vecScaleCopy(cells, 1.0/rCut, region);
 	vecRound(cells);
-	nMol = 4 * vecProd(initUcell);
+	nMol = 4 * int(vecProd(initUcell)+0.5);
 	nebrTabMax = nebrTabFac * nMol;
 }
 
@@ -174,13 +190,13 @@ void singleStep() {
 		vecWrapAll(mol[i].r, region);
 	}
 
-#ifdef NEIGH_LIST
-	if (nebrNow) {
+	// execute this when neigh_list is on
+	// and nebrNow is 1
+	if (neigh_list && nebrNow) {
 		nebrNow = 0;
 		dispHi = 0;
 		buildNebrList();
 	}
-#endif
 
 	computeForces();
 	leapfrogStep(2);
@@ -221,47 +237,51 @@ void buildNebrList() {
 	rrNebr = Sqr(rCut + rNebrShell);
 	nebrTabLen = 0;
 
-#ifdef NEIGH_CELL
-	vecDiv(invWid, cells, region);
-	// initialize the cell values to -1
-	for (int i = nMol; i < nMol + vecProd(cells); i++) {
-		cellList[i] = -1;
-	}
-
-	// make a linked list
-	for (int i = 0; i < nMol; i++) {
-		vecScaleAdd(rs, mol[i].r, 0.5, region);
-		vecMul(cc, rs, invWid);
-		vecFloor(cc);
-		int c = vecLinear(cc, cells) + nMol;
-		cellList[i] = cellList[c];
-		cellList[c] = i;
-	}
-
-	for (int m1z = 0; m1z < cells.z; m1z++) {
-		for (int m1y = 0; m1y < cells.y; m1y++) {
-			for (int m1x = 0; m1x < cells.x; m1x++) {
-				vecSet(m1v, m1x, m1y, m1z);
-				int m1 = vecLinear(m1v, cells) + nMol;
-				for (int Noff = 0; Noff < 14; Noff++) {
-					vecAdd(m2v, m1v, vecOffset[Noff]);
-					vecSet(shift, 0, 0, 0);
-					cellWrapAll(m2v, shift, cells, region);
-					int m2 = vecLinear(m2v, cells) + nMol;
-					for (int j1 = cellList[m1]; j1 >= 0; j1 = cellList[j1]) {
-						for (int j2 = cellList[m2]; j2 >= 0; j2 = cellList[j2]) {
-							if (m1 != m2 || j1 > j2) {
-								vecSub(dr, mol[j1].r, mol[j2].r);
-								vecSub(dr, dr, shift);
-								rr = vecLenSq(dr);
-								if (rr < rrNebr) {
-									if (nebrTabLen >= nebrTabMax) {
-										std::cout << "too many neighbors!\n";
-										exit(0);
+	if (cell_list) {
+		/*
+		 * CELL SUBDIVISION FOR NEIGHBOR LIST
+		 */
+		vecDiv(invWid, cells, region);
+		// initialize the cell values to -1
+		for (int i = nMol; i < nMol + vecProd(cells); i++) {
+			cellList[i] = -1;
+		}
+	
+		// make a linked list
+		for (int i = 0; i < nMol; i++) {
+			vecScaleAdd(rs, mol[i].r, 0.5, region);
+			vecMul(cc, rs, invWid);
+			vecFloor(cc);
+			int c = vecLinear(cc, cells) + nMol;
+			cellList[i] = cellList[c];
+			cellList[c] = i;
+		}
+	
+		for (int m1z = 0; m1z < cells.z; m1z++) {
+			for (int m1y = 0; m1y < cells.y; m1y++) {
+				for (int m1x = 0; m1x < cells.x; m1x++) {
+					vecSet(m1v, m1x, m1y, m1z);
+					int m1 = vecLinear(m1v, cells) + nMol;
+					for (int Noff = 0; Noff < 14; Noff++) {
+						vecAdd(m2v, m1v, vecOffset[Noff]);
+						vecSet(shift, 0, 0, 0);
+						cellWrapAll(m2v, shift, cells, region);
+						int m2 = vecLinear(m2v, cells) + nMol;
+						for (int j1 = cellList[m1]; j1 > -1; j1 = cellList[j1]) {
+							for (int j2 = cellList[m2]; j2 > -1; j2 = cellList[j2]) {
+								if (m1 != m2 || j1 > j2) {
+									vecSub(dr, mol[j1].r, mol[j2].r);
+									vecSub(dr, dr, shift);
+									rr = vecLenSq(dr);
+									if (rr < rrNebr) {
+										if (nebrTabLen >= nebrTabMax) {
+											std::cout << "too many neighbors!\n";
+											exit(0);
+										}
+										nebrTab[2*nebrTabLen] = j1;
+										nebrTab[2*nebrTabLen+1] = j2;
+										nebrTabLen++;
 									}
-									nebrTab[2*nebrTabLen] = j1;
-									nebrTab[2*nebrTabLen+1] = j2;
-									nebrTabLen++;
 								}
 							}
 						}
@@ -269,27 +289,27 @@ void buildNebrList() {
 				}
 			}
 		}
-	}
-#endif
-
-#ifndef NEIGH_CELL
-	for (int j1 = 0; j1 < nMol - 1; j1++) {
-		for (int j2 = j1+1; j2 < nMol; j2++) {
-			vecSub(dr, mol[j1].r, mol[j2].r);
-			vecWrapAll(dr, region);
-			rr = vecLenSq(dr);
-			if (rr < rrNebr) {
-				if (nebrTabLen >= nebrTabMax) {
-					std::cout << "too many neighbors!\n";
-					exit(0);
+	} else {
+		/*
+		 * ONLY NEIGHBOR LIST
+		 */
+		for (int j1 = 0; j1 < nMol - 1; j1++) {
+			for (int j2 = j1+1; j2 < nMol; j2++) {
+				vecSub(dr, mol[j1].r, mol[j2].r);
+				vecWrapAll(dr, region);
+				rr = vecLenSq(dr);
+				if (rr < rrNebr) {
+					if (nebrTabLen >= nebrTabMax) {
+						std::cout << "too many neighbors!\n";
+						exit(0);
+					}
+					nebrTab[2*nebrTabLen] = j1;
+					nebrTab[2*nebrTabLen+1] = j2;
+					nebrTabLen++;
 				}
-				nebrTab[2*nebrTabLen] = j1;
-				nebrTab[2*nebrTabLen+1] = j2;
-				nebrTabLen++;
 			}
 		}
 	}
-#endif
 }
 
 void computeForces() {
@@ -306,9 +326,13 @@ void computeForces() {
 	uSum = 0;
 	virSum = 0;
 
-#ifdef ALL_PAIR
-	for (int j1 = 0; j1 < nMol - 1; j1++) {
-		for (int j2 = j1+1; j2 < nMol; j2++) {
+	if (neigh_list) {
+		/*
+		 * NEIGHBOR LIST
+		 */
+		for (int i = 0; i < nebrTabLen; i++) {
+			int j1 = nebrTab[2*i];
+			int j2 = nebrTab[2*i+1];
 			vecSub(dr, mol[j1].r, mol[j2].r);
 			vecWrapAll(dr, region);
 			rr = vecLenSq(dr);
@@ -322,50 +346,51 @@ void computeForces() {
 				virSum += fcVal * rr;
 			}
 		}
-	}
-#endif
-
-#ifdef CELL_LIST
-	vecDiv(invWid, cells, region);
-	// initialize the cell values to -1
-	for (int i = nMol; i < nMol + vecProd(cells); i++) {
-		cellList[i] = -1;
-	}
-
-	// make a linked list
-	for (int i = 0; i < nMol; i++) {
-		vecScaleAdd(rs, mol[i].r, 0.5, region);
-		vecMul(cc, rs, invWid);
-		vecFloor(cc);
-		int c = vecLinear(cc, cells) + nMol;
-		cellList[i] = cellList[c];
-		cellList[c] = i;
-	}
-
-	for (int m1z = 0; m1z < cells.z; m1z++) {
-		for (int m1y = 0; m1y < cells.y; m1y++) {
-			for (int m1x = 0; m1x < cells.x; m1x++) {
-				vecSet(m1v, m1x, m1y, m1z);
-				int m1 = vecLinear(m1v, cells) + nMol;
-				for (int Noff = 0; Noff < 14; Noff++) {
-					vecAdd(m2v, m1v, vecOffset[Noff]);
-					vecSet(shift, 0, 0, 0);
-					cellWrapAll(m2v, shift, cells, region);
-					int m2 = vecLinear(m2v, cells) + nMol;
-					for (int j1 = cellList[m1]; j1 >= 0; j1 = cellList[j1]) {
-						for (int j2 = cellList[m2]; j2 >= 0; j2 = cellList[j2]) {
-							if (m1 != m2 || j1 > j2) {
-								vecSub(dr, mol[j1].r, mol[j2].r);
-								vecSub(dr, dr, shift);
-								rr = vecLenSq(dr);
-								if (rr < rrCut) {
-									rri = 1.0 / rr;
-									rri3 = Cub(rri);
-									fcVal = 48.0 * rri3 * (rri3 - 0.5) * rri;
-									vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal, dr);
-									vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal, dr);
-									uSum += 4.0 * rri3 * (rri3 - 1.0);
-									virSum += fcVal * rr;
+	} else if (cell_list) {
+		/*
+		 * CELL SUBDIVISION
+		 */
+		vecDiv(invWid, cells, region);
+		// initialize the cell values to -1
+		for (int i = nMol; i < nMol + vecProd(cells); i++) {
+			cellList[i] = -1;
+		}
+	
+		// make a linked list
+		for (int i = 0; i < nMol; i++) {
+			vecScaleAdd(rs, mol[i].r, 0.5, region);
+			vecMul(cc, rs, invWid);
+			vecFloor(cc);
+			int c = vecLinear(cc, cells) + nMol;
+			cellList[i] = cellList[c];
+			cellList[c] = i;
+		}
+	
+		for (int m1z = 0; m1z < cells.z; m1z++) {
+			for (int m1y = 0; m1y < cells.y; m1y++) {
+				for (int m1x = 0; m1x < cells.x; m1x++) {
+					vecSet(m1v, m1x, m1y, m1z);
+					int m1 = vecLinear(m1v, cells) + nMol;
+					for (int Noff = 0; Noff < 14; Noff++) {
+						vecAdd(m2v, m1v, vecOffset[Noff]);
+						vecSet(shift, 0, 0, 0);
+						cellWrapAll(m2v, shift, cells, region);
+						int m2 = vecLinear(m2v, cells) + nMol;
+						for (int j1 = cellList[m1]; j1 > -1; j1 = cellList[j1]) {
+							for (int j2 = cellList[m2]; j2 > -1; j2 = cellList[j2]) {
+								if (m1 != m2 || j1 > j2) {
+									vecSub(dr, mol[j1].r, mol[j2].r);
+									vecSub(dr, dr, shift);
+									rr = vecLenSq(dr);
+									if (rr < rrCut) {
+										rri = 1.0 / rr;
+										rri3 = Cub(rri);
+										fcVal = 48.0 * rri3 * (rri3 - 0.5) * rri;
+										vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal, dr);
+										vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal, dr);
+										uSum += 4.0 * rri3 * (rri3 - 1.0);
+										virSum += fcVal * rr;
+									}
 								}
 							}
 						}
@@ -373,27 +398,27 @@ void computeForces() {
 				}
 			}
 		}
-	}
-#endif
-
-#ifdef NEIGH_LIST
-	for (int i = 0; i < nebrTabLen; i++) {
-		int j1 = nebrTab[2*i];
-		int j2 = nebrTab[2*i+1];
-		vecSub(dr, mol[j1].r, mol[j2].r);
-		vecWrapAll(dr, region);
-		rr = vecLenSq(dr);
-		if (rr < rrCut) {
-			rri = 1.0 / rr;
-			rri3 = Cub(rri);
-			fcVal = 48.0 * rri3 * (rri3 - 0.5) * rri;
-			vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal, dr);
-			vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal, dr);
-			uSum += 4.0 * rri3 * (rri3 - 1.0);
-			virSum += fcVal * rr;
+	} else {
+		/*
+		 * ALL PAIRS
+		 */
+		for (int j1 = 0; j1 < nMol - 1; j1++) {
+			for (int j2 = j1+1; j2 < nMol; j2++) {
+				vecSub(dr, mol[j1].r, mol[j2].r);
+				vecWrapAll(dr, region);
+				rr = vecLenSq(dr);
+				if (rr < rrCut) {
+					rri = 1.0 / rr;
+					rri3 = Cub(rri);
+					fcVal = 48.0 * rri3 * (rri3 - 0.5) * rri;
+					vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal, dr);
+					vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal, dr);
+					uSum += 4.0 * rri3 * (rri3 - 1.0);
+					virSum += fcVal * rr;
+				}
+			}
 		}
 	}
-#endif
 }
 
 void evalProps() {
