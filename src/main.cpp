@@ -248,8 +248,8 @@ void buildNebrList() {
 					vecSet(shift, 0, 0, 0);
 					cellWrapAll(m2v, shift, cells, region);
 					int m2 = vecLinear(m2v, cells) + nMol;
-					for (int j1 = cellList[m1]; j1 > 0; j1 = cellList[j1]) {
-						for (int j2 = cellList[m2]; j2 > 0; j2 = cellList[j2]) {
+					for (int j1 = cellList[m1]; j1 >= 0; j1 = cellList[j1]) {
+						for (int j2 = cellList[m2]; j2 >= 0; j2 = cellList[j2]) {
 							if (m1 != m2 || j1 > j2) {
 								vecSub(dr, mol[j1].r, mol[j2].r);
 								vecSub(dr, dr, shift);
@@ -352,8 +352,8 @@ void computeForces() {
 					vecSet(shift, 0, 0, 0);
 					cellWrapAll(m2v, shift, cells, region);
 					int m2 = vecLinear(m2v, cells) + nMol;
-					for (int j1 = cellList[m1]; j1 > 0; j1 = cellList[j1]) {
-						for (int j2 = cellList[m2]; j2 > 0; j2 = cellList[j2]) {
+					for (int j1 = cellList[m1]; j1 >= 0; j1 = cellList[j1]) {
+						for (int j2 = cellList[m2]; j2 >= 0; j2 = cellList[j2]) {
 							if (m1 != m2 || j1 > j2) {
 								vecSub(dr, mol[j1].r, mol[j2].r);
 								vecSub(dr, dr, shift);
