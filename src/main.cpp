@@ -3,6 +3,8 @@
 #include <random>
 #include <algorithm>
 #include <chrono>
+#include <string>
+#include <fstream>
 
 #include "types.hpp"
 #include "vec_cal.hpp"
@@ -11,12 +13,12 @@ void setParams();
 void initAtoms();
 void rescaleVels();
 void accumProps(int);
-void singleStep();
+void singleStep(std::string);
 void leapfrogStep(int);
 void buildNebrList();
 void computeForces();
 void evalProps();
-void printSummary();
+void printSummary(std::string);
 
 // global variables
 real rCut, density, temperature, deltaT, timeNow;
@@ -30,9 +32,14 @@ real dispHi, rNebrShell;
 int *nebrTab, nebrNow, nebrTabFac, nebrTabLen, nebrTabMax;
 int num_atoms, cell_list = 0, neigh_list = 0;
 
-int main() {
+int main(int argc, char **argv) {
 	// program start time
 	auto start = std::chrono::system_clock::now();
+
+	// process i/o files
+	std::string dot_in(argv[1]);
+	std::string dummy = dot_in;
+	std::string dot_out = dummy.erase(dummy.length() - 3).append(".out");
 
 	nDim = 3;
 	rCut = 3;
@@ -43,20 +50,10 @@ int main() {
 	deltaT = 0.001;
 
 	// input from user
-	std::cout << "Temperature: ";
-	std::cin >> temperature;
-	std::cout << "Density: ";
-	std::cin >> density;
-	std::cout << "Number of atoms: ";
-	std::cin >> num_atoms;
+	std::ifstream inputFile(dot_in);
+	inputFile >> temperature >> density >> num_atoms >> cell_list >> neigh_list;
 	real num_unit_cell = int(std::pow(num_atoms/4, 1/3.0)+0.5);
 	initUcell = {num_unit_cell, num_unit_cell, num_unit_cell};
-
-	// which method to use
-	std::cout << "Cell subdivision (0 or 1): ";
-	std::cin >> cell_list;
-	std::cout << "Neighbor list (0 or 1): ";
-	std::cin >> neigh_list;
 
 	// for neighbor list
 	nebrTabFac = 100;
@@ -72,7 +69,7 @@ int main() {
 	accumProps(0);
 
 	for (stepCount = 0; stepCount < stepLimit; stepCount++) {
-		singleStep();
+		singleStep(dot_out);
 	}
 
 	delete[] mol;
@@ -82,7 +79,10 @@ int main() {
 	// program end time
 	auto end = std::chrono::system_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(end-start);
-	std::cout << "Wall time: " << elapsed.count() << " seconds\n";
+	std::ofstream outputFile;
+	outputFile.open(dot_out, std::ofstream::app);
+	outputFile << "Wall time: " << elapsed.count() << " seconds\n";
+	outputFile.close();
 
 	return 0;
 }
@@ -181,7 +181,7 @@ void accumProps(int icode) {
 	}
 }
 
-void singleStep() {
+void singleStep(std::string dot_out) {
 	timeNow = stepCount * deltaT;
 
 	leapfrogStep(1);
@@ -210,7 +210,7 @@ void singleStep() {
 
 	if (stepCount % stepAvg == 0) {
 		accumProps(2);
-		printSummary();
+		printSummary(dot_out);
 		accumProps(0);
 	}
 }
@@ -442,9 +442,12 @@ void evalProps() {
 	}
 }
 
-void printSummary() {
-	std::cout << stepCount << '\t' << timeNow << '\t'
+void printSummary(std::string dot_out) {
+	std::ofstream outputFile;
+	outputFile.open(dot_out, std::ofstream::app);
+	outputFile << stepCount << '\t' << timeNow << '\t'
 		<< std::sqrt(vecLenSq(velSum))/nMol << '\t'
 		<< kinEnergy.sum << '\t' << totEnergy.sum << '\t'
 		<< pressure.sum << '\n';
+	outputFile.close();
 }
