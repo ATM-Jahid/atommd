@@ -13,18 +13,19 @@ void setParams();
 void initAtoms();
 void rescaleVels();
 void accumProps(int);
-void singleStep(std::string);
+void singleStep(std::string, std::string);
 void leapfrogStep(int);
 void buildNebrList();
 void computeForces();
 void evalProps();
 void printSummary(std::string);
+void posDump(std::string);
 
 // global variables
 real rCut, density, temperature, deltaT, timeNow;
 real uSum, virSum;
 vecR cells, initUcell, region, velSum;
-int nMol, nDim, stepCount, stepEquil, stepAdjTemp, stepLimit, stepAvg;
+int nMol, nDim, stepCount, stepEquil, stepAdjTemp, stepLimit, stepAvg, stepDump;
 Prop kinEnergy, totEnergy, pressure;
 Mol *mol;
 int *cellList;
@@ -39,7 +40,8 @@ int main(int argc, char **argv) {
 	// process i/o files
 	std::string dot_in(argv[1]);
 	std::string dummy = dot_in;
-	std::string dot_out = dummy.erase(dummy.length() - 3).append(".out");
+	std::string dot_out = dummy.erase(dummy.length() - 2).append("out");
+	std::string dot_dump = dummy.erase(dummy.length() - 3).append("dump");
 
 	nDim = 3;
 	rCut = 3;
@@ -47,6 +49,7 @@ int main(int argc, char **argv) {
 	stepEquil = 5000;
 	stepAdjTemp = 20;
 	stepAvg = 50;
+	stepDump = 100;
 	deltaT = 0.001;
 
 	// input from user
@@ -69,7 +72,7 @@ int main(int argc, char **argv) {
 	accumProps(0);
 
 	for (stepCount = 0; stepCount < stepLimit; stepCount++) {
-		singleStep(dot_out);
+		singleStep(dot_out, dot_dump);
 	}
 
 	delete[] mol;
@@ -181,7 +184,7 @@ void accumProps(int icode) {
 	}
 }
 
-void singleStep(std::string dot_out) {
+void singleStep(std::string dot_out, std::string dot_dump) {
 	timeNow = stepCount * deltaT;
 
 	leapfrogStep(1);
@@ -212,6 +215,10 @@ void singleStep(std::string dot_out) {
 		accumProps(2);
 		printSummary(dot_out);
 		accumProps(0);
+	}
+
+	if (stepCount % stepDump == 0) {
+		posDump(dot_dump);
 	}
 }
 
@@ -450,4 +457,21 @@ void printSummary(std::string dot_out) {
 		<< kinEnergy.sum << '\t' << totEnergy.sum << '\t'
 		<< pressure.sum << '\n';
 	outputFile.close();
+}
+
+void posDump(std::string dot_dump) {
+	std::ofstream dumpFile;
+	dumpFile.open(dot_dump, std::ofstream::app);
+	dumpFile << "ITEM: TIMESTEP\n" << timeNow << '\n'
+		<< "ITEM: NUMBER OF ATOMS\n" << nMol << '\n'
+		<< "ITEM: BOX BOUNDS pp pp pp\n"
+		<< -0.5*region.x << ' ' << 0.5*region.x << '\n'
+		<< -0.5*region.y << ' ' << 0.5*region.y << '\n'
+		<< -0.5*region.z << ' ' << 0.5*region.z << '\n'
+		<< "ITEM: ATOMS id x y z\n";
+	for (int i = 0; i < nMol; i++) {
+		dumpFile << i+1 << ' '
+			<< mol[i].r.x << ' ' << mol[i].r.y << ' ' << mol[i].r.z << '\n';
+	}
+	dumpFile.close();
 }
