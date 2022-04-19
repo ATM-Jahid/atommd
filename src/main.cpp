@@ -20,6 +20,8 @@ void computeForces();
 void evalProps();
 void printSummary(std::string);
 void posDump(std::string);
+void evalRdf();
+void printRdf();
 
 // global variables
 real rCut, density, temperature, deltaT, timeNow;
@@ -32,6 +34,8 @@ int *cellList;
 real dispHi, rNebrShell;
 int *nebrTab, nebrNow, nebrTabFac, nebrTabLen, nebrTabMax;
 int num_atoms, cell_list = 0, neigh_list = 0;
+real *histRdf, rangeRdf;
+int countRdf, limitRdf, sizeHistRdf, stepRdf;
 
 int main(int argc, char **argv) {
 	// program start time
@@ -52,6 +56,11 @@ int main(int argc, char **argv) {
 	stepDump = 100;
 	deltaT = 0.001;
 
+	limitRdf = 100;
+	rangeRdf = 4;
+	sizeHistRdf = 200;
+	stepRdf = 50;
+
 	// input from user
 	std::ifstream inputFile(dot_in);
 	inputFile >> temperature >> density >> num_atoms >> cell_list >> neigh_list;
@@ -67,7 +76,9 @@ int main(int argc, char **argv) {
 	mol = new Mol[nMol];
 	cellList = new int[int(vecProd(cells)+0.5) + nMol];
 	nebrTab = new int[2*nebrTabMax];
+	histRdf = new real[sizeHistRdf];
 
+	countRdf = 0;
 	initAtoms();
 	accumProps(0);
 
@@ -78,6 +89,7 @@ int main(int argc, char **argv) {
 	delete[] mol;
 	delete[] cellList;
 	delete[] nebrTab;
+	delete[] histRdf;
 
 	// program end time
 	auto end = std::chrono::system_clock::now();
@@ -219,6 +231,10 @@ void singleStep(std::string dot_out, std::string dot_dump) {
 
 	if (stepCount % stepDump == 0) {
 		posDump(dot_dump);
+	}
+
+	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepRdf == 0) {
+		evalRdf();
 	}
 }
 
@@ -474,4 +490,49 @@ void posDump(std::string dot_dump) {
 			<< mol[i].r.x << ' ' << mol[i].r.y << ' ' << mol[i].r.z << '\n';
 	}
 	dumpFile.close();
+}
+
+void evalRdf() {
+	vecR dr;
+	real deltaR, normFac, rr;
+
+	if (countRdf == 0) {
+		for (int n = 0; n < sizeHistRdf; n++) {
+			histRdf[n] = 0;
+		}
+	}
+	deltaR = rangeRdf / sizeHistRdf;
+
+	for (int j1 = 0; j1 < nMol - 1; j1++) {
+		for (int j2 = j1 + 1; j2 < nMol; j2++) {
+			vecSub(dr, mol[j1].r, mol[j2].r);
+			vecWrapAll(dr, region);
+			rr = vecLenSq(dr);
+			if (rr < Sqr(rangeRdf)) {
+				int n = std::sqrt(rr) / deltaR;
+				histRdf[n]++;
+			}
+		}
+	}
+
+	countRdf++;
+	if (countRdf == limitRdf) {
+		normFac = vecProd(region)
+			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr(nMol) * countRdf);
+		for (int n = 0; n < sizeHistRdf; n++) {
+			histRdf[n] *= normFac / Sqr(n - 0.5);
+		}
+		printRdf();
+		countRdf = 0;
+	}
+}
+
+void printRdf() {
+	real rb;
+
+	std::cout << "RDF\n";
+	for (int n = 0; n < sizeHistRdf; n++) {
+		rb = (n + 0.5) * rangeRdf / sizeHistRdf;
+		std::cout << rb << '\t' << histRdf[n] << '\n';
+	}
 }
