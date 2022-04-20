@@ -22,6 +22,7 @@ void printSummary(std::string);
 void posDump(std::string);
 void evalRdf();
 void printRdf();
+void evalLatticeCorr();
 
 // global variables
 real rCut, density, temperature, deltaT, timeNow;
@@ -36,6 +37,7 @@ int *nebrTab, nebrNow, nebrTabFac, nebrTabLen, nebrTabMax;
 int num_atoms, cell_list = 0, neigh_list = 0;
 real *histRdf, rangeRdf;
 int countRdf, limitRdf, sizeHistRdf, stepRdf;
+real latticeCorr;
 
 int main(int argc, char **argv) {
 	// program start time
@@ -225,6 +227,7 @@ void singleStep(std::string dot_out, std::string dot_dump) {
 
 	if (stepCount % stepAvg == 0) {
 		accumProps(2);
+		evalLatticeCorr();
 		printSummary(dot_out);
 		accumProps(0);
 	}
@@ -471,7 +474,7 @@ void printSummary(std::string dot_out) {
 	outputFile << stepCount << '\t' << timeNow << '\t'
 		<< std::sqrt(vecLenSq(velSum))/nMol << '\t'
 		<< kinEnergy.sum << '\t' << totEnergy.sum << '\t'
-		<< pressure.sum << '\n';
+		<< pressure.sum << '\t' << latticeCorr << '\n';
 	outputFile.close();
 }
 
@@ -535,4 +538,21 @@ void printRdf() {
 		rb = (n + 0.5) * rangeRdf / sizeHistRdf;
 		std::cout << rb << '\t' << histRdf[n] << '\n';
 	}
+}
+
+void evalLatticeCorr() {
+	vecR kVec;
+	real si = 0, sr = 0, t;
+
+	kVec.x = 2.0 * 3.141592654 * initUcell.x / region.x;
+	kVec.y = - kVec.x;
+	kVec.z = kVec.x;
+
+	for (int n = 0; n < nMol; n++) {
+		t = vecDot(kVec, mol[n].r);
+		sr += std::cos(t);
+		si += std::sin(t);
+	}
+
+	latticeCorr = std::sqrt(Sqr(sr) + Sqr(si)) / nMol;
 }
