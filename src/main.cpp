@@ -13,15 +13,15 @@ void setParams();
 void initAtoms();
 void rescaleVels();
 void accumProps(int);
-void singleStep(std::string, std::string);
+void singleStep(std::string);
 void leapfrogStep(int);
 void buildNebrList();
 void computeForces();
 void evalProps();
 void printSummary(std::string);
 void posDump(std::string);
-void evalRdf();
-void printRdf();
+void evalRdf(std::string);
+void printRdf(std::string);
 void evalLatticeCorr();
 
 // global variables
@@ -45,9 +45,6 @@ int main(int argc, char **argv) {
 
 	// process i/o files
 	std::string dot_in(argv[1]);
-	std::string dummy = dot_in;
-	std::string dot_out = dummy.erase(dummy.length() - 2).append("out");
-	std::string dot_dump = dummy.erase(dummy.length() - 3).append("dump");
 
 	nDim = 3;
 	rCut = 3;
@@ -85,7 +82,7 @@ int main(int argc, char **argv) {
 	accumProps(0);
 
 	for (stepCount = 0; stepCount < stepLimit; stepCount++) {
-		singleStep(dot_out, dot_dump);
+		singleStep(dot_in);
 	}
 
 	delete[] mol;
@@ -96,6 +93,7 @@ int main(int argc, char **argv) {
 	// program end time
 	auto end = std::chrono::system_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(end-start);
+	std::string dot_out = dot_in.erase(dot_in.length()-2).append("out");
 	std::ofstream outputFile;
 	outputFile.open(dot_out, std::ofstream::app);
 	outputFile << "Wall time: " << elapsed.count() << " seconds\n";
@@ -198,7 +196,7 @@ void accumProps(int icode) {
 	}
 }
 
-void singleStep(std::string dot_out, std::string dot_dump) {
+void singleStep(std::string dot_in) {
 	timeNow = stepCount * deltaT;
 
 	leapfrogStep(1);
@@ -228,16 +226,16 @@ void singleStep(std::string dot_out, std::string dot_dump) {
 	if (stepCount % stepAvg == 0) {
 		accumProps(2);
 		evalLatticeCorr();
-		printSummary(dot_out);
+		printSummary(dot_in);
 		accumProps(0);
 	}
 
 	if (stepCount % stepDump == 0) {
-		posDump(dot_dump);
+		posDump(dot_in);
 	}
 
 	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepRdf == 0) {
-		evalRdf();
+		evalRdf(dot_in);
 	}
 }
 
@@ -468,7 +466,8 @@ void evalProps() {
 	}
 }
 
-void printSummary(std::string dot_out) {
+void printSummary(std::string dot_in) {
+	std::string dot_out = dot_in.erase(dot_in.length()-2).append("out");
 	std::ofstream outputFile;
 	outputFile.open(dot_out, std::ofstream::app);
 	outputFile << stepCount << '\t' << timeNow << '\t'
@@ -478,7 +477,8 @@ void printSummary(std::string dot_out) {
 	outputFile.close();
 }
 
-void posDump(std::string dot_dump) {
+void posDump(std::string dot_in) {
+	std::string dot_dump = dot_in.erase(dot_in.length()-2).append("dump");
 	std::ofstream dumpFile;
 	dumpFile.open(dot_dump, std::ofstream::app);
 	dumpFile << "ITEM: TIMESTEP\n" << timeNow << '\n'
@@ -495,7 +495,7 @@ void posDump(std::string dot_dump) {
 	dumpFile.close();
 }
 
-void evalRdf() {
+void evalRdf(std::string dot_in) {
 	vecR dr;
 	real deltaR, normFac, rr;
 
@@ -525,19 +525,23 @@ void evalRdf() {
 		for (int n = 0; n < sizeHistRdf; n++) {
 			histRdf[n] *= normFac / Sqr(n - 0.5);
 		}
-		printRdf();
+		printRdf(dot_in);
 		countRdf = 0;
 	}
 }
 
-void printRdf() {
-	real rb;
+void printRdf(std::string dot_in) {
+	std::string dot_rdf = dot_in.erase(dot_in.length()-2).append("rdf");
+	std::ofstream rdfFile;
+	rdfFile.open(dot_rdf, std::ofstream::app);
 
-	std::cout << "RDF\n";
+	rdfFile << "RDF\n";
 	for (int n = 0; n < sizeHistRdf; n++) {
-		rb = (n + 0.5) * rangeRdf / sizeHistRdf;
-		std::cout << rb << '\t' << histRdf[n] << '\n';
+		real rb = (n + 0.5) * rangeRdf / sizeHistRdf;
+		rdfFile << rb << '\t' << histRdf[n] << '\n';
 	}
+
+	rdfFile.close();
 }
 
 void evalLatticeCorr() {
