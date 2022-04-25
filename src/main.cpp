@@ -23,6 +23,11 @@ void posDump(std::string);
 void evalRdf(std::string);
 void printRdf(std::string);
 void evalLatticeCorr();
+void initDiffusion();
+void zeroDiffusion();
+void evalDiffusion();
+void accumDiffusion();
+void printDiffusion();
 
 // global variables
 real rCut, density, temperature, deltaT, timeNow;
@@ -38,6 +43,9 @@ int num_atoms, cell_list = 0, neigh_list = 0;
 real *histRdf, rangeRdf;
 int countRdf, limitRdf, sizeHistRdf, stepRdf;
 real latticeCorr;
+Tbuff *buffer;
+real *rrDiffAvg;
+int countDiffAvg, limitDiffAvg, nBuffDiff, nValDiff, stepDiff;
 
 int main(int argc, char **argv) {
 	// program start time
@@ -60,6 +68,11 @@ int main(int argc, char **argv) {
 	sizeHistRdf = 200;
 	stepRdf = 50;
 
+	limitDiffAvg = 80;
+	nBuffDiff = 20;
+	nValDiff = 100;
+	stepDiff = 10;
+
 	// input from user
 	std::ifstream inputFile(dot_in);
 	inputFile >> temperature >> density >> num_atoms >> cell_list >> neigh_list;
@@ -76,10 +89,18 @@ int main(int argc, char **argv) {
 	cellList = new int[int(vecProd(cells)+0.5) + nMol];
 	nebrTab = new int[2*nebrTabMax];
 	histRdf = new real[sizeHistRdf];
+	rrDiffAvg = new real[nValDiff];
+	buffer = new Tbuff[nBuffDiff];
+	for (int nb = 0; nb < nBuffDiff; nb++) {
+		buffer[nb].orgR = new vecR[nMol];
+		buffer[nb].rTrue = new vecR[nMol];
+		buffer[nb].rrDiff = new real[nValDiff];
+	}
 
 	countRdf = 0;
 	initAtoms();
 	accumProps(0);
+	initDiffusion();
 
 	for (stepCount = 0; stepCount < stepLimit; stepCount++) {
 		singleStep(dot_in);
@@ -89,6 +110,13 @@ int main(int argc, char **argv) {
 	delete[] cellList;
 	delete[] nebrTab;
 	delete[] histRdf;
+	delete[] rrDiffAvg;
+	for (int nb = 0; nb < nBuffDiff; nb++) {
+		delete[] buffer[nb].orgR;
+		delete[] buffer[nb].rTrue;
+		delete[] buffer[nb].rrDiff;
+	}
+	delete[] buffer;
 
 	// program end time
 	auto end = std::chrono::system_clock::now();
@@ -236,6 +264,10 @@ void singleStep(std::string dot_in) {
 
 	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepRdf == 0) {
 		evalRdf(dot_in);
+	}
+
+	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepDiff == 0) {
+		evalDiffusion();
 	}
 }
 
@@ -559,4 +591,76 @@ void evalLatticeCorr() {
 	}
 
 	latticeCorr = std::sqrt(Sqr(sr) + Sqr(si)) / nMol;
+}
+
+void initDiffusion() {
+	for (int nb = 0; nb < nBuffDiff; nb++) {
+		buffer[nb].count = -nb * nValDiff / nBuffDiff;
+		zeroDiffusion();
+	}
+}
+
+void zeroDiffusion() {
+	countDiffAvg = 0;
+	for (int j = 0; j < nValDiff; j++) {
+		rrDiffAvg[j] = 0;
+	}
+}
+
+void evalDiffusion() {
+	vecR dr;
+	for (int nb = 0; nb < nBuffDiff; nb++) {
+		if (buffer[nb].count == 0) {
+			for (int n = 0; n < nMol; n++) {
+				buffer[nb].orgR[n] = mol[n].r;
+				buffer[nb].rTrue[n] = mol[n].r;
+			}
+		}
+		if (buffer[nb].count >= 0) {
+			int ni = buffer[nb].count;
+			buffer[nb].rrDiff[ni] = 0;
+			for (int n = 0; n < nMol; n++) {
+				vecSub(dr, buffer[nb].rTrue[n], mol[n].r);
+				vecDiv(dr, dr, region);
+				vecRound(dr);
+				vecMul(dr, dr, region);
+				vecAdd(buffer[nb].rTrue[n], mol[n].r, dr);
+				vecSub(dr, buffer[nb].rTrue[n], buffer[nb].orgR[n]);
+				buffer[nb].rrDiff[ni] += vecLenSq(dr);
+			}
+		}
+		buffer[nb].count++;
+	}
+
+		accumDiffusion();
+}
+
+void accumDiffusion() {
+	real fac;
+	for (int nb = 0; nb < nBuffDiff; nb++) {
+		if (buffer[nb].count == nValDiff) {
+			for (int j = 0; j < nValDiff; j++) {
+				rrDiffAvg[j] += buffer[nb].rrDiff[j];
+			}
+			buffer[nb].count = 0;
+			countDiffAvg++;
+			if (countDiffAvg == limitDiffAvg) {
+				fac = 1.0 / (nDim * 2 * nMol * stepDiff * deltaT * limitDiffAvg);
+				for (int k = 1; k < nValDiff; k++) {
+					rrDiffAvg[k] *= fac / k;
+				}
+				printDiffusion();
+				zeroDiffusion();
+			}
+		}
+	}
+}
+
+void printDiffusion() {
+	real tVal;
+	std::cout << "Diffusion\n";
+	for (int j = 0; j < nValDiff; j++) {
+		tVal = j * stepDiff * deltaT;
+		std::cout << tVal << '\t' << rrDiffAvg[j] << '\n';
+	}
 }

@@ -17,9 +17,9 @@ void vecSet(vecR &vec, real cx, real cy, real cz) {
 }
 
 void vecRound(vecR &vec) {
-	vec.x = int(vec.x+0.5);
-	vec.y = int(vec.y+0.5);
-	vec.z = int(vec.z+0.5);
+	vec.x = int(std::round(vec.x));
+	vec.y = int(std::round(vec.y));
+	vec.z = int(std::round(vec.z));
 }
 
 void vecFloor(vecR &vec) {
