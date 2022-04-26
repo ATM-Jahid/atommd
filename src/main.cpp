@@ -65,26 +65,29 @@ int main(int argc, char **argv) {
 
 	nDim = 3;
 	rCut = 3;
-	stepLimit = 10000;
-	stepEquil = 5000;
+	stepLimit = 20000;
+	stepEquil = 10000;
 	stepAdjTemp = 20;
 	stepAvg = 50;
 	stepDump = 100;
 	deltaT = 0.001;
 
-	limitRdf = 100;
+	// rdf parameters
+	limitRdf = 200;
 	rangeRdf = 4;
 	sizeHistRdf = 200;
 	stepRdf = 50;
 
+	// diffusivity parameters
 	limitDiffAvg = 80;
 	nBuffDiff = 20;
-	nValDiff = 100;
+	nValDiff = 200;
 	stepDiff = 10;
 
+	// VACF parameters
 	limitAcfAvg = 80;
 	nBuffAcf = 20;
-	nValAcf = 100;
+	nValAcf = 200;
 	stepAcf = 10;
 
 	// input from user
