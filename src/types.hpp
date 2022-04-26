@@ -17,3 +17,9 @@ typedef struct {
 	real *rrDiff;
 	int count;
 } Tbuff;
+
+typedef struct {
+	vecR *orgVel;
+	real *acfVel;
+	int count;
+} Vbuff;

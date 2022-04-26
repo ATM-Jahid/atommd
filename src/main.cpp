@@ -28,6 +28,12 @@ void zeroDiffusion();
 void evalDiffusion();
 void accumDiffusion();
 void printDiffusion();
+void initVacf();
+void zeroVacf();
+void evalVacf();
+void accumVacf();
+real integrate(real *, int);
+void printVacf();
 
 // global variables
 real rCut, density, temperature, deltaT, timeNow;
@@ -46,6 +52,9 @@ real latticeCorr;
 Tbuff *buffer;
 real *rrDiffAvg;
 int countDiffAvg, limitDiffAvg, nBuffDiff, nValDiff, stepDiff;
+Vbuff *vacBuff;
+real *avgAcfVel, intAcfVel;
+int countAcfAvg, limitAcfAvg, nBuffAcf, nValAcf, stepAcf;
 
 int main(int argc, char **argv) {
 	// program start time
@@ -73,6 +82,11 @@ int main(int argc, char **argv) {
 	nValDiff = 100;
 	stepDiff = 10;
 
+	limitAcfAvg = 80;
+	nBuffAcf = 20;
+	nValAcf = 100;
+	stepAcf = 10;
+
 	// input from user
 	std::ifstream inputFile(dot_in);
 	inputFile >> temperature >> density >> num_atoms >> cell_list >> neigh_list;
@@ -96,11 +110,18 @@ int main(int argc, char **argv) {
 		buffer[nb].rTrue = new vecR[nMol];
 		buffer[nb].rrDiff = new real[nValDiff];
 	}
+	avgAcfVel = new real[nValAcf];
+	vacBuff = new Vbuff[nBuffAcf];
+	for (int nb = 0; nb < nBuffAcf; nb++) {
+		vacBuff[nb].acfVel = new real[nValAcf];
+		vacBuff[nb].orgVel = new vecR[nMol];
+	}
 
 	countRdf = 0;
 	initAtoms();
 	accumProps(0);
 	initDiffusion();
+	initVacf();
 
 	for (stepCount = 0; stepCount < stepLimit; stepCount++) {
 		singleStep(dot_in);
@@ -117,6 +138,12 @@ int main(int argc, char **argv) {
 		delete[] buffer[nb].rrDiff;
 	}
 	delete[] buffer;
+	delete[] avgAcfVel;
+	for (int nb = 0; nb < nBuffAcf; nb++) {
+		delete[] vacBuff[nb].acfVel;
+		delete[] vacBuff[nb].orgVel;
+	}
+	delete[] vacBuff;
 
 	// program end time
 	auto end = std::chrono::system_clock::now();
@@ -268,6 +295,10 @@ void singleStep(std::string dot_in) {
 
 	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepDiff == 0) {
 		evalDiffusion();
+	}
+
+	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepAcf == 0) {
+		evalVacf();
 	}
 }
 
@@ -596,8 +627,8 @@ void evalLatticeCorr() {
 void initDiffusion() {
 	for (int nb = 0; nb < nBuffDiff; nb++) {
 		buffer[nb].count = -nb * nValDiff / nBuffDiff;
-		zeroDiffusion();
 	}
+	zeroDiffusion();
 }
 
 void zeroDiffusion() {
@@ -632,7 +663,7 @@ void evalDiffusion() {
 		buffer[nb].count++;
 	}
 
-		accumDiffusion();
+	accumDiffusion();
 }
 
 void accumDiffusion() {
@@ -663,4 +694,79 @@ void printDiffusion() {
 		tVal = j * stepDiff * deltaT;
 		std::cout << tVal << '\t' << rrDiffAvg[j] << '\n';
 	}
+}
+
+void initVacf() {
+	for (int nb = 0; nb < nBuffAcf; nb++) {
+		vacBuff[nb].count = -nb * nValAcf / nBuffAcf;
+	}
+	zeroVacf();
+}
+
+void zeroVacf() {
+	countAcfAvg = 0;
+	for (int j = 0; j < nValAcf; j++) {
+		avgAcfVel[j] = 0;
+	}
+}
+
+void evalVacf() {
+	for (int nb = 0; nb < nBuffAcf; nb++) {
+		if (vacBuff[nb].count == 0) {
+			for (int n = 0; n < nMol; n++) {
+				vacBuff[nb].orgVel[n] = mol[n].vel;
+			}
+		}
+		if (vacBuff[nb].count >= 0) {
+			int ni = vacBuff[nb].count;
+			vacBuff[nb].acfVel[ni] = 0;
+			for (int n = 0; n < nMol; n++) {
+				vacBuff[nb].acfVel[ni] += vecDot(vacBuff[nb].orgVel[n], mol[n].vel);
+			}
+		}
+		vacBuff[nb].count++;
+	}
+
+	accumVacf();
+}
+
+void accumVacf() {
+	real fac;
+	for (int nb = 0; nb < nBuffAcf; nb++) {
+		if (vacBuff[nb].count == nValAcf) {
+			for (int j = 0; j < nValAcf; j++) {
+				avgAcfVel[j] += vacBuff[nb].acfVel[j];
+			}
+			vacBuff[nb].count = 0;
+			countAcfAvg++;
+			if (countAcfAvg == limitAcfAvg) {
+				fac = stepAcf * deltaT / (nDim * nMol * limitAcfAvg);
+				intAcfVel = fac * integrate(avgAcfVel, nValAcf);
+				for (int k = 1; k < nValAcf; k++) {
+					avgAcfVel[k] /= avgAcfVel[0];
+				}
+				avgAcfVel[0] = 1;
+				printVacf();
+				zeroVacf();
+			}
+		}
+	}
+}
+
+real integrate(real *f, int nf) {
+	real s = 0.5 * (f[0] + f[nf-1]);
+	for (int i = 1; i < nf-1; i++) {
+		s += f[i];
+	}
+	return s;
+}
+
+void printVacf() {
+	real tVal;
+	std::cout << "VACF\n";
+	for (int j = 0; j < nValAcf; j++) {
+		tVal = j * stepAcf * deltaT;
+		std::cout << tVal << '\t' << avgAcfVel[j] << '\n';
+	}
+	std::cout << "VACF integral: " << intAcfVel << '\n';
 }
