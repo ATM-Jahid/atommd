@@ -25,15 +25,15 @@ void printRdf(std::string);
 void evalLatticeCorr();
 void initDiffusion();
 void zeroDiffusion();
-void evalDiffusion();
-void accumDiffusion();
-void printDiffusion();
+void evalDiffusion(std::string);
+void accumDiffusion(std::string);
+void printDiffusion(std::string);
 void initVacf();
 void zeroVacf();
-void evalVacf();
-void accumVacf();
+void evalVacf(std::string);
+void accumVacf(std::string);
 real integrate(real *, int);
-void printVacf();
+void printVacf(std::string);
 
 // global variables
 real rCut, density, temperature, deltaT, timeNow;
@@ -294,11 +294,11 @@ void singleStep(std::string dot_in) {
 	}
 
 	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepDiff == 0) {
-		evalDiffusion();
+		evalDiffusion(dot_in);
 	}
 
 	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepAcf == 0) {
-		evalVacf();
+		evalVacf(dot_in);
 	}
 }
 
@@ -638,7 +638,7 @@ void zeroDiffusion() {
 	}
 }
 
-void evalDiffusion() {
+void evalDiffusion(std::string dot_in) {
 	vecR dr;
 	for (int nb = 0; nb < nBuffDiff; nb++) {
 		if (buffer[nb].count == 0) {
@@ -663,10 +663,10 @@ void evalDiffusion() {
 		buffer[nb].count++;
 	}
 
-	accumDiffusion();
+	accumDiffusion(dot_in);
 }
 
-void accumDiffusion() {
+void accumDiffusion(std::string dot_in) {
 	real fac;
 	for (int nb = 0; nb < nBuffDiff; nb++) {
 		if (buffer[nb].count == nValDiff) {
@@ -680,20 +680,26 @@ void accumDiffusion() {
 				for (int k = 1; k < nValDiff; k++) {
 					rrDiffAvg[k] *= fac / k;
 				}
-				printDiffusion();
+				printDiffusion(dot_in);
 				zeroDiffusion();
 			}
 		}
 	}
 }
 
-void printDiffusion() {
+void printDiffusion(std::string dot_in) {
+	std::string dot_dfs = dot_in.erase(dot_in.length()-2).append("dfs");
+	std::ofstream dfsFile;
+	dfsFile.open(dot_dfs, std::ofstream::app);
+
 	real tVal;
-	std::cout << "Diffusion\n";
+	dfsFile << "Diffusion\n";
 	for (int j = 0; j < nValDiff; j++) {
 		tVal = j * stepDiff * deltaT;
-		std::cout << tVal << '\t' << rrDiffAvg[j] << '\n';
+		dfsFile << tVal << '\t' << rrDiffAvg[j] << '\n';
 	}
+
+	dfsFile.close();
 }
 
 void initVacf() {
@@ -710,7 +716,7 @@ void zeroVacf() {
 	}
 }
 
-void evalVacf() {
+void evalVacf(std::string dot_in) {
 	for (int nb = 0; nb < nBuffAcf; nb++) {
 		if (vacBuff[nb].count == 0) {
 			for (int n = 0; n < nMol; n++) {
@@ -727,10 +733,10 @@ void evalVacf() {
 		vacBuff[nb].count++;
 	}
 
-	accumVacf();
+	accumVacf(dot_in);
 }
 
-void accumVacf() {
+void accumVacf(std::string dot_in) {
 	real fac;
 	for (int nb = 0; nb < nBuffAcf; nb++) {
 		if (vacBuff[nb].count == nValAcf) {
@@ -746,7 +752,7 @@ void accumVacf() {
 					avgAcfVel[k] /= avgAcfVel[0];
 				}
 				avgAcfVel[0] = 1;
-				printVacf();
+				printVacf(dot_in);
 				zeroVacf();
 			}
 		}
@@ -761,12 +767,18 @@ real integrate(real *f, int nf) {
 	return s;
 }
 
-void printVacf() {
+void printVacf(std::string dot_in) {
+	std::string dot_acf = dot_in.erase(dot_in.length()-2).append("acf");
+	std::ofstream acfFile;
+	acfFile.open(dot_acf, std::ofstream::app);
+
 	real tVal;
-	std::cout << "VACF\n";
+	acfFile << "VACF\n";
 	for (int j = 0; j < nValAcf; j++) {
 		tVal = j * stepAcf * deltaT;
-		std::cout << tVal << '\t' << avgAcfVel[j] << '\n';
+		acfFile << tVal << '\t' << avgAcfVel[j] << '\n';
 	}
-	std::cout << "VACF integral: " << intAcfVel << '\n';
+	acfFile << "VACF integral: " << intAcfVel << '\n';
+
+	acfFile.close();
 }
