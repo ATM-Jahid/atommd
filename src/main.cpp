@@ -22,6 +22,8 @@ void printSummary(std::string);
 void posDump(std::string);
 void evalRdf(std::string);
 void printRdf(std::string);
+void evalRdf_AB(std::string);
+void printRdf_AB(std::string);
 void evalLatticeCorr();
 void initDiffusion();
 void zeroDiffusion();
@@ -47,6 +49,7 @@ real dispHi, rNebrShell;
 int *nebrTab, nebrNow, nebrTabFac, nebrTabLen, nebrTabMax;
 int num_atoms, cell_list = 0, neigh_list = 0;
 real *histRdf, rangeRdf;
+real *histRdfAA, *histRdfBB, *histRdfAB;
 int countRdf, limitRdf, sizeHistRdf, stepRdf;
 real latticeCorr;
 Tbuff *buffer;
@@ -55,6 +58,7 @@ int countDiffAvg, limitDiffAvg, nBuffDiff, nValDiff, stepDiff;
 Vbuff *vacBuff;
 real *avgAcfVel, intAcfVel;
 int countAcfAvg, limitAcfAvg, nBuffAcf, nValAcf, stepAcf;
+real percA;
 
 int main(int argc, char **argv) {
 	// program start time
@@ -605,6 +609,74 @@ void printRdf(std::string dot_in) {
 	for (int n = 0; n < sizeHistRdf; n++) {
 		real rb = (n + 0.5) * rangeRdf / sizeHistRdf;
 		rdfFile << rb << '\t' << histRdf[n] << '\n';
+	}
+
+	rdfFile.close();
+}
+
+void evalRdf_AB(std::string dot_in) {
+	vecR dr;
+	real deltaR, normFacAA, normFacBB, normFacAB, rr;
+
+	if (countRdf == 0) {
+		for (int n = 0; n < sizeHistRdf; n++) {
+			histRdfAA[n] = 0;
+			histRdfAB[n] = 0;
+			histRdfBB[n] = 0;
+		}
+	}
+	deltaR = rangeRdf / sizeHistRdf;
+
+	for (int j1 = 0; j1 < nMol - 1; j1++) {
+		for (int j2 = j1 + 1; j2 < nMol; j2++) {
+			vecSub(dr, mol[j1].r, mol[j2].r);
+			vecWrapAll(dr, region);
+			rr = vecLenSq(dr);
+			if (rr < Sqr(rangeRdf)) {
+				int n = std::sqrt(rr) / deltaR;
+				if (mol[j1].type == 1 && mol[j2].type == 1) {
+					histRdfAA[n]++;
+				} else if (mol[j1].type == 2 && mol[j2].type == 2) {
+					histRdfBB[n]++;
+				} else if ((mol[j1].type == 1 && mol[j2].type == 1)
+					|| (mol[j1].type == 2 && mol[j2].type == 1)) {
+					histRdfAB[n]++;
+				}
+				histRdf[n]++;
+			}
+		}
+	}
+
+	countRdf++;
+	if (countRdf == limitRdf) {
+		normFacAA = vecProd(region)
+			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr(percA*nMol) * countRdf);
+		normFacBB = vecProd(region)
+			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr((1.0-percA)*nMol) * countRdf);
+		normFacAB = vecProd(region)
+			/ (2.0 * 3.141592654 * Cub(deltaR) * 2.0 * (percA*nMol*(1.0-percA)*nMol) * countRdf);
+		for (int n = 0; n < sizeHistRdf; n++) {
+			histRdfAA[n] *= normFacAA / Sqr(n + 0.5);
+			histRdfBB[n] *= normFacBB / Sqr(n + 0.5);
+			histRdfAB[n] *= normFacAB / Sqr(n + 0.5);
+		}
+		printRdf_AB(dot_in);
+		countRdf = 0;
+	}
+}
+
+void printRdf_AB(std::string dot_in) {
+	std::string dot_rdf = dot_in.erase(dot_in.length()-2).append("abRdf");
+	std::ofstream rdfFile;
+	rdfFile.open(dot_rdf, std::ofstream::app);
+
+	rdfFile << "RDF AA BB AB\n";
+	for (int n = 0; n < sizeHistRdf; n++) {
+		real rb = (n + 0.5) * rangeRdf / sizeHistRdf;
+		rdfFile << rb << '\t'
+			<< histRdfAA[n] << '\t'
+			<< histRdfBB[n] << '\t'
+			<< histRdfAB[n] << '\n';
 	}
 
 	rdfFile.close();

@@ -6,6 +6,8 @@ typedef struct {
 
 typedef struct {
 	vecR r, vel, acc;
+	real mass;
+	int type;
 } Mol;
 
 typedef struct {
