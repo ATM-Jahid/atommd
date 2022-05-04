@@ -40,14 +40,15 @@ void printVacf(std::string);
 double rCut, density, temperature, deltaT, timeNow;
 double uSum, virSum;
 vecR cells, initUcell, region, momSum;
-int nMol, nMolA, nMolB;
-int nDim, stepCount, stepEquil, stepAdjTemp, stepLimit, stepAvg, stepDump;
+int nDim, nMol, nMolA, nMolB;
+int stepCount, stepEquil, stepRun, stepLimit;
+int stepAdjTemp, stepAvg, stepDump;
 Prop kinEnergy, totEnergy, pressure;
 Mol *mol;
 int *cellList;
 double dispHi, rNebrShell;
 int *nebrTab, nebrNow, nebrTabFac, nebrTabLen, nebrTabMax;
-int num_atoms, cell_list = 0, neigh_list = 0;
+int num_atoms, cell_list = 1, neigh_list = 1;
 double *histRdfAA, *histRdfBB, *histRdfAB, rangeRdf;
 int countRdf, limitRdf, sizeHistRdf, stepRdf;
 double latticeCorr;
@@ -70,34 +71,35 @@ int main(int argc, char **argv) {
 
 	nDim = 3;
 	rCut = 3;
-	stepLimit = 20000;
 	stepEquil = 10000;
+	stepRun = 10000;
+	stepLimit = stepEquil + stepRun;
 	stepAdjTemp = 20;
 	stepAvg = 50;
 	stepDump = 100;
-	deltaT = 0.001;
+	deltaT = 0.01;
 
 	// rdf parameters
 	limitRdf = 200;
+	stepRdf = stepRun / limitRdf;
 	rangeRdf = 4;
 	sizeHistRdf = 200;
-	stepRdf = 50;
 
 	// diffusivity parameters
-	limitDiffAvg = 80;
-	nBuffDiff = 20;
-	nValDiff = 200;
 	stepDiff = 10;
+	nValDiff = 500;
+	nBuffDiff = 50;
+	limitDiffAvg = (stepRun/stepDiff/nValDiff - 1) * nBuffDiff;
 
 	// VACF parameters
-	limitAcfAvg = 80;
-	nBuffAcf = 20;
-	nValAcf = 200;
-	stepAcf = 10;
+	stepAcf = stepDiff;
+	nValAcf = nValDiff;
+	nBuffAcf = nBuffDiff;
+	limitAcfAvg = limitDiffAvg;
 
 	// input from user
 	std::ifstream inputFile(dot_in);
-	inputFile >> temperature >> density >> num_atoms >> cell_list >> neigh_list;
+	inputFile >> temperature >> density >> num_atoms >> mRatio;
 	double num_unit_cell = int(std::pow(num_atoms/4, 1/3.0)+0.5);
 	initUcell = {num_unit_cell, num_unit_cell, num_unit_cell};
 
@@ -199,7 +201,6 @@ void setParams() {
 
 void initAtoms() {
 	mass2 = 1.0;
-	mRatio = 1.0;
 	mass1 = mass2 * mRatio;
 
 	nMolA = 0;
@@ -377,51 +378,49 @@ void buildNebrList() {
 	rrNebr = Sqr(rCut + rNebrShell);
 	nebrTabLen = 0;
 
-	if (cell_list) {
-		/*
-		 * CELL SUBDIVISION FOR NEIGHBOR LIST
-		 */
-		vecDiv(invWid, cells, region);
-		// initialize the cell values to -1
-		for (int i = nMol; i < nMol + vecProd(cells); i++) {
-			cellList[i] = -1;
-		}
-	
-		// make a linked list
-		for (int i = 0; i < nMol; i++) {
-			vecScaleAdd(rs, mol[i].r, 0.5, region);
-			vecMul(cc, rs, invWid);
-			vecFloor(cc);
-			int c = vecLinear(cc, cells) + nMol;
-			cellList[i] = cellList[c];
-			cellList[c] = i;
-		}
-	
-		for (int m1z = 0; m1z < cells.z; m1z++) {
-			for (int m1y = 0; m1y < cells.y; m1y++) {
-				for (int m1x = 0; m1x < cells.x; m1x++) {
-					vecSet(m1v, m1x, m1y, m1z);
-					int m1 = vecLinear(m1v, cells) + nMol;
-					for (int Noff = 0; Noff < 14; Noff++) {
-						vecAdd(m2v, m1v, vecOffset[Noff]);
-						vecSet(shift, 0, 0, 0);
-						cellWrapAll(m2v, shift, cells, region);
-						int m2 = vecLinear(m2v, cells) + nMol;
-						for (int j1 = cellList[m1]; j1 > -1; j1 = cellList[j1]) {
-							for (int j2 = cellList[m2]; j2 > -1; j2 = cellList[j2]) {
-								if (m1 != m2 || j1 > j2) {
-									vecSub(dr, mol[j1].r, mol[j2].r);
-									vecSub(dr, dr, shift);
-									rr = vecLenSq(dr);
-									if (rr < rrNebr) {
-										if (nebrTabLen >= nebrTabMax) {
-											std::cout << "too many neighbors!\n";
-											exit(0);
-										}
-										nebrTab[2*nebrTabLen] = j1;
-										nebrTab[2*nebrTabLen+1] = j2;
-										nebrTabLen++;
+	/*
+	 * CELL SUBDIVISION FOR NEIGHBOR LIST
+	 */
+	vecDiv(invWid, cells, region);
+	// initialize the cell values to -1
+	for (int i = nMol; i < nMol + vecProd(cells); i++) {
+		cellList[i] = -1;
+	}
+
+	// make a linked list
+	for (int i = 0; i < nMol; i++) {
+		vecScaleAdd(rs, mol[i].r, 0.5, region);
+		vecMul(cc, rs, invWid);
+		vecFloor(cc);
+		int c = vecLinear(cc, cells) + nMol;
+		cellList[i] = cellList[c];
+		cellList[c] = i;
+	}
+
+	for (int m1z = 0; m1z < cells.z; m1z++) {
+		for (int m1y = 0; m1y < cells.y; m1y++) {
+			for (int m1x = 0; m1x < cells.x; m1x++) {
+				vecSet(m1v, m1x, m1y, m1z);
+				int m1 = vecLinear(m1v, cells) + nMol;
+				for (int Noff = 0; Noff < 14; Noff++) {
+					vecAdd(m2v, m1v, vecOffset[Noff]);
+					vecSet(shift, 0, 0, 0);
+					cellWrapAll(m2v, shift, cells, region);
+					int m2 = vecLinear(m2v, cells) + nMol;
+					for (int j1 = cellList[m1]; j1 > -1; j1 = cellList[j1]) {
+						for (int j2 = cellList[m2]; j2 > -1; j2 = cellList[j2]) {
+							if (m1 != m2 || j1 > j2) {
+								vecSub(dr, mol[j1].r, mol[j2].r);
+								vecSub(dr, dr, shift);
+								rr = vecLenSq(dr);
+								if (rr < rrNebr) {
+									if (nebrTabLen >= nebrTabMax) {
+										std::cout << "too many neighbors!\n";
+										exit(0);
 									}
+									nebrTab[2*nebrTabLen] = j1;
+									nebrTab[2*nebrTabLen+1] = j2;
+									nebrTabLen++;
 								}
 							}
 						}
@@ -429,34 +428,12 @@ void buildNebrList() {
 				}
 			}
 		}
-	} else {
-		/*
-		 * ONLY NEIGHBOR LIST
-		 */
-		for (int j1 = 0; j1 < nMol - 1; j1++) {
-			for (int j2 = j1+1; j2 < nMol; j2++) {
-				vecSub(dr, mol[j1].r, mol[j2].r);
-				vecWrapAll(dr, region);
-				rr = vecLenSq(dr);
-				if (rr < rrNebr) {
-					if (nebrTabLen >= nebrTabMax) {
-						std::cout << "too many neighbors!\n";
-						exit(0);
-					}
-					nebrTab[2*nebrTabLen] = j1;
-					nebrTab[2*nebrTabLen+1] = j2;
-					nebrTabLen++;
-				}
-			}
-		}
 	}
 }
 
 void computeForces() {
-	vecR dr, invWid, rs, shift, cc, m1v, m2v;
-	vecR vecOffset[] = {{0,0,0}, {1,0,0}, {1,1,0}, {0,1,0}, {-1,1,0}, {0,0,1}, {1,0,1},
-			{1,1,1}, {0,1,1}, {-1,1,1}, {-1,0,1}, {-1,-1,1}, {0,-1,1}, {1,-1,1}};
-	double fcVal, rr, rrCut, rri, rri3;
+	vecR dr;
+	double fcVal, rr, rrCut;
 
 	rrCut = Sqr(rCut);
 	// resetting the acc. values since they are incremented later on
@@ -466,108 +443,34 @@ void computeForces() {
 	uSum = 0;
 	virSum = 0;
 
-	if (neigh_list) {
-		/*
-		 * NEIGHBOR LIST
-		 */
-		for (int i = 0; i < nebrTabLen; i++) {
-			int j1 = nebrTab[2*i];
-			int j2 = nebrTab[2*i+1];
-			vecSub(dr, mol[j1].r, mol[j2].r);
-			vecWrapAll(dr, region);
-			rr = vecLenSq(dr);
-			if (rr < rrCut) {
-				if (mol[j1].type == 1 && mol[j2].type == 1) {
-					eps = epsAA;
-					sig = sigAA;
-				} else if (mol[j1].type == 2 && mol[j2].type == 2) {
-					eps = epsBB;
-					sig = sigBB;
-				} else if ((mol[j1].type == 1 && mol[j2].type == 2)
-					|| (mol[j1].type == 2 && mol[j2].type == 1)) {
-					eps = epsAA;
-					sig = sigBB;
-				}
-				fcVal = 48.0 * eps * std::pow(sig, 12) / std::pow(rr, 7)
-					- 24.0 * eps * std::pow(sig, 6) / std::pow(rr, 4);
-				vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal/mol[j1].mass, dr);
-				vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal/mol[j2].mass, dr);
-				uSum += 4.0 * eps * std::pow(sig, 12) / std::pow(rr, 6)
-					- 4.0 * eps * std::pow(sig, 6) / std::pow(rr, 3);
-				virSum += fcVal * rr;
+	/*
+	 * NEIGHBOR LIST
+	 */
+	for (int i = 0; i < nebrTabLen; i++) {
+		int j1 = nebrTab[2*i];
+		int j2 = nebrTab[2*i+1];
+		vecSub(dr, mol[j1].r, mol[j2].r);
+		vecWrapAll(dr, region);
+		rr = vecLenSq(dr);
+		if (rr < rrCut) {
+			if (mol[j1].type == 1 && mol[j2].type == 1) {
+				eps = epsAA;
+				sig = sigAA;
+			} else if (mol[j1].type == 2 && mol[j2].type == 2) {
+				eps = epsBB;
+				sig = sigBB;
+			} else if ((mol[j1].type == 1 && mol[j2].type == 2)
+				|| (mol[j1].type == 2 && mol[j2].type == 1)) {
+				eps = epsAA;
+				sig = sigBB;
 			}
-		}
-	} else if (cell_list) {
-		/*
-		 * CELL SUBDIVISION
-		 */
-		vecDiv(invWid, cells, region);
-		// initialize the cell values to -1
-		for (int i = nMol; i < nMol + vecProd(cells); i++) {
-			cellList[i] = -1;
-		}
-	
-		// make a linked list
-		for (int i = 0; i < nMol; i++) {
-			vecScaleAdd(rs, mol[i].r, 0.5, region);
-			vecMul(cc, rs, invWid);
-			vecFloor(cc);
-			int c = vecLinear(cc, cells) + nMol;
-			cellList[i] = cellList[c];
-			cellList[c] = i;
-		}
-	
-		for (int m1z = 0; m1z < cells.z; m1z++) {
-			for (int m1y = 0; m1y < cells.y; m1y++) {
-				for (int m1x = 0; m1x < cells.x; m1x++) {
-					vecSet(m1v, m1x, m1y, m1z);
-					int m1 = vecLinear(m1v, cells) + nMol;
-					for (int Noff = 0; Noff < 14; Noff++) {
-						vecAdd(m2v, m1v, vecOffset[Noff]);
-						vecSet(shift, 0, 0, 0);
-						cellWrapAll(m2v, shift, cells, region);
-						int m2 = vecLinear(m2v, cells) + nMol;
-						for (int j1 = cellList[m1]; j1 > -1; j1 = cellList[j1]) {
-							for (int j2 = cellList[m2]; j2 > -1; j2 = cellList[j2]) {
-								if (m1 != m2 || j1 > j2) {
-									vecSub(dr, mol[j1].r, mol[j2].r);
-									vecSub(dr, dr, shift);
-									rr = vecLenSq(dr);
-									if (rr < rrCut) {
-										rri = 1.0 / rr;
-										rri3 = Cub(rri);
-										fcVal = 48.0 * rri3 * (rri3 - 0.5) * rri;
-										vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal, dr);
-										vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal, dr);
-										uSum += 4.0 * rri3 * (rri3 - 1.0);
-										virSum += fcVal * rr;
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	} else {
-		/*
-		 * ALL PAIRS
-		 */
-		for (int j1 = 0; j1 < nMol - 1; j1++) {
-			for (int j2 = j1+1; j2 < nMol; j2++) {
-				vecSub(dr, mol[j1].r, mol[j2].r);
-				vecWrapAll(dr, region);
-				rr = vecLenSq(dr);
-				if (rr < rrCut) {
-					rri = 1.0 / rr;
-					rri3 = Cub(rri);
-					fcVal = 48.0 * rri3 * (rri3 - 0.5) * rri;
-					vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal, dr);
-					vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal, dr);
-					uSum += 4.0 * rri3 * (rri3 - 1.0);
-					virSum += fcVal * rr;
-				}
-			}
+			fcVal = 48.0 * eps * std::pow(sig, 12) / std::pow(rr, 7)
+				- 24.0 * eps * std::pow(sig, 6) / std::pow(rr, 4);
+			vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal/mol[j1].mass, dr);
+			vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal/mol[j2].mass, dr);
+			uSum += 4.0 * eps * std::pow(sig, 12) / std::pow(rr, 6)
+				- 4.0 * eps * std::pow(sig, 6) / std::pow(rr, 3);
+			virSum += fcVal * rr;
 		}
 	}
 }
@@ -614,9 +517,9 @@ void posDump(std::string dot_in) {
 		<< -0.5*region.x << ' ' << 0.5*region.x << '\n'
 		<< -0.5*region.y << ' ' << 0.5*region.y << '\n'
 		<< -0.5*region.z << ' ' << 0.5*region.z << '\n'
-		<< "ITEM: ATOMS id x y z\n";
+		<< "ITEM: ATOMS id type x y z\n";
 	for (int i = 0; i < nMol; i++) {
-		dumpFile << i+1 << ' '
+		dumpFile << i+1 << ' ' << mol[i].type << ' '
 			<< mol[i].r.x << ' ' << mol[i].r.y << ' ' << mol[i].r.z << '\n';
 	}
 	dumpFile.close();
@@ -810,9 +713,9 @@ void printMsd(std::string dot_in) {
 	for (int j = 0; j < nValDiff; j++) {
 		tVal = j * stepDiff * deltaT;
 		msdFile << tVal << '\t'
-			<< rrDiffAvgAA[j] << '\t'
-			<< rrDiffAvgBB[j] << '\t'
-			<< rrDiffAvgAB[j] << '\n';
+			<< rrDiffAvgAA[j] / nMolA << '\t'
+			<< rrDiffAvgBB[j] / nMolB << '\t'
+			<< rrDiffAvgAB[j] / nMol << '\n';
 	}
 
 	msdFile.close();

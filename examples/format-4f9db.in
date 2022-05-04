@@ -1,0 +1,5 @@
+temperature
+density
+number of atoms
+cell subdivision (0 or 1)
+neighbor list (0 or 1)
