@@ -27,6 +27,7 @@ void initDiffusion();
 void zeroDiffusion();
 void evalDiffusion(std::string);
 void accumDiffusion(std::string);
+void printMsd(std::string);
 void printDiffusion(std::string);
 void initVacf();
 void zeroVacf();
@@ -342,7 +343,6 @@ void singleStep(std::string dot_in) {
 	}
 
 	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepRdf == 0) {
-		//evalRdf(dot_in);
 		evalRdf_AB(dot_in);
 	}
 
@@ -657,11 +657,11 @@ void evalRdf_AB(std::string dot_in) {
 	countRdf++;
 	if (countRdf == limitRdf) {
 		normFacAA = vecProd(region)
-			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr(nAlpha*nMol) * countRdf);
+			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr(nMolA) * countRdf);
 		normFacBB = vecProd(region)
-			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr(nBeta*nMol) * countRdf);
+			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr(nMolB) * countRdf);
 		normFacAB = vecProd(region)
-			/ (2.0 * 3.141592654 * Cub(deltaR) * 2.0 * (nAlpha*nMol*nBeta*nMol) * countRdf);
+			/ (4.0 * 3.141592654 * Cub(deltaR) * (nMolA*nMolB) * countRdf);
 		for (int n = 0; n < sizeHistRdf; n++) {
 			histRdfAA[n] *= normFacAA / Sqr(n + 0.5);
 			histRdfBB[n] *= normFacBB / Sqr(n + 0.5);
@@ -784,6 +784,7 @@ void accumDiffusion(std::string dot_in) {
 			bufferAA[nb].count = 0;
 			countDiffAvg++;
 			if (countDiffAvg == limitDiffAvg) {
+				printMsd(dot_in);
 				facAA = 1.0 / (nDim * 2 * nMolA * stepDiff * deltaT * limitDiffAvg);
 				facBB = 1.0 / (nDim * 2 * nMolB * stepDiff * deltaT * limitDiffAvg);
 				facAB = Q / (nDim * 2 * nMol * stepDiff * deltaT * limitDiffAvg);
@@ -797,6 +798,24 @@ void accumDiffusion(std::string dot_in) {
 			}
 		}
 	}
+}
+
+void printMsd(std::string dot_in) {
+	std::string dot_msd = dot_in.erase(dot_in.length()-2).append("msd");
+	std::ofstream msdFile;
+	msdFile.open(dot_msd, std::ofstream::app);
+
+	double tVal;
+	msdFile << "MSD AA BB AB\n";
+	for (int j = 0; j < nValDiff; j++) {
+		tVal = j * stepDiff * deltaT;
+		msdFile << tVal << '\t'
+			<< rrDiffAvgAA[j] << '\t'
+			<< rrDiffAvgBB[j] << '\t'
+			<< rrDiffAvgAB[j] << '\n';
+	}
+
+	msdFile.close();
 }
 
 void printDiffusion(std::string dot_in) {
