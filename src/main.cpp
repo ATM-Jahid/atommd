@@ -20,8 +20,6 @@ void computeForces();
 void evalProps();
 void printSummary(std::string);
 void posDump(std::string);
-void evalRdf(std::string);
-void printRdf(std::string);
 void evalRdf_AB(std::string);
 void printRdf_AB(std::string);
 void evalLatticeCorr();
@@ -34,31 +32,33 @@ void initVacf();
 void zeroVacf();
 void evalVacf(std::string);
 void accumVacf(std::string);
-real integrate(real *, int);
+double integrate(double *, int);
 void printVacf(std::string);
 
 // global variables
-real rCut, density, temperature, deltaT, timeNow;
-real uSum, virSum;
-vecR cells, initUcell, region, velSum;
-int nMol, nDim, stepCount, stepEquil, stepAdjTemp, stepLimit, stepAvg, stepDump;
+double rCut, density, temperature, deltaT, timeNow;
+double uSum, virSum;
+vecR cells, initUcell, region, momSum;
+int nMol, nMolA, nMolB;
+int nDim, stepCount, stepEquil, stepAdjTemp, stepLimit, stepAvg, stepDump;
 Prop kinEnergy, totEnergy, pressure;
 Mol *mol;
 int *cellList;
-real dispHi, rNebrShell;
+double dispHi, rNebrShell;
 int *nebrTab, nebrNow, nebrTabFac, nebrTabLen, nebrTabMax;
 int num_atoms, cell_list = 0, neigh_list = 0;
-real *histRdf, rangeRdf;
-real *histRdfAA, *histRdfBB, *histRdfAB;
+double *histRdfAA, *histRdfBB, *histRdfAB, rangeRdf;
 int countRdf, limitRdf, sizeHistRdf, stepRdf;
-real latticeCorr;
-Tbuff *buffer;
-real *rrDiffAvg;
+double latticeCorr;
+Tbuff *bufferAA, *bufferBB, *bufferAB;
+double *rrDiffAvgAA, *rrDiffAvgBB, *rrDiffAvgAB;
 int countDiffAvg, limitDiffAvg, nBuffDiff, nValDiff, stepDiff;
 Vbuff *vacBuff;
-real *avgAcfVel, intAcfVel;
+double *avgAcfVel, intAcfVel;
 int countAcfAvg, limitAcfAvg, nBuffAcf, nValAcf, stepAcf;
-real percA;
+double nAlpha, nBeta, mass1, mass2, mRatio, Q;
+double eps, epsAA = 1.0, epsBB = 0.50, epsAB = 1.5;
+double sig, sigAA = 1.0, sigBB = 0.88, sigAB = 0.8;
 
 int main(int argc, char **argv) {
 	// program start time
@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
 	// input from user
 	std::ifstream inputFile(dot_in);
 	inputFile >> temperature >> density >> num_atoms >> cell_list >> neigh_list;
-	real num_unit_cell = int(std::pow(num_atoms/4, 1/3.0)+0.5);
+	double num_unit_cell = int(std::pow(num_atoms/4, 1/3.0)+0.5);
 	initUcell = {num_unit_cell, num_unit_cell, num_unit_cell};
 
 	// for neighbor list
@@ -109,18 +109,30 @@ int main(int argc, char **argv) {
 	mol = new Mol[nMol];
 	cellList = new int[int(vecProd(cells)+0.5) + nMol];
 	nebrTab = new int[2*nebrTabMax];
-	histRdf = new real[sizeHistRdf];
-	rrDiffAvg = new real[nValDiff];
-	buffer = new Tbuff[nBuffDiff];
+	histRdfAA = new double[sizeHistRdf];
+	histRdfBB = new double[sizeHistRdf];
+	histRdfAB = new double[sizeHistRdf];
+	rrDiffAvgAA = new double[nValDiff];
+	rrDiffAvgBB = new double[nValDiff];
+	rrDiffAvgAB = new double[nValDiff];
+	bufferAA = new Tbuff[nBuffDiff];
+	bufferBB = new Tbuff[nBuffDiff];
+	bufferAB = new Tbuff[nBuffDiff];
 	for (int nb = 0; nb < nBuffDiff; nb++) {
-		buffer[nb].orgR = new vecR[nMol];
-		buffer[nb].rTrue = new vecR[nMol];
-		buffer[nb].rrDiff = new real[nValDiff];
+		bufferAA[nb].orgR = new vecR[nMol];
+		bufferAA[nb].rTrue = new vecR[nMol];
+		bufferAA[nb].rrDiff = new double[nValDiff];
+		bufferBB[nb].orgR = new vecR[nMol];
+		bufferBB[nb].rTrue = new vecR[nMol];
+		bufferBB[nb].rrDiff = new double[nValDiff];
+		bufferAB[nb].orgR = new vecR[nMol];
+		bufferAB[nb].rTrue = new vecR[nMol];
+		bufferAB[nb].rrDiff = new double[nValDiff];
 	}
-	avgAcfVel = new real[nValAcf];
+	avgAcfVel = new double[nValAcf];
 	vacBuff = new Vbuff[nBuffAcf];
 	for (int nb = 0; nb < nBuffAcf; nb++) {
-		vacBuff[nb].acfVel = new real[nValAcf];
+		vacBuff[nb].acfVel = new double[nValAcf];
 		vacBuff[nb].orgVel = new vecR[nMol];
 	}
 
@@ -137,14 +149,26 @@ int main(int argc, char **argv) {
 	delete[] mol;
 	delete[] cellList;
 	delete[] nebrTab;
-	delete[] histRdf;
-	delete[] rrDiffAvg;
+	delete[] histRdfAA;
+	delete[] histRdfBB;
+	delete[] histRdfAB;
+	delete[] rrDiffAvgAA;
+	delete[] rrDiffAvgBB;
+	delete[] rrDiffAvgAB;
 	for (int nb = 0; nb < nBuffDiff; nb++) {
-		delete[] buffer[nb].orgR;
-		delete[] buffer[nb].rTrue;
-		delete[] buffer[nb].rrDiff;
+		delete[] bufferAA[nb].orgR;
+		delete[] bufferAA[nb].rTrue;
+		delete[] bufferAA[nb].rrDiff;
+		delete[] bufferBB[nb].orgR;
+		delete[] bufferBB[nb].rTrue;
+		delete[] bufferBB[nb].rrDiff;
+		delete[] bufferAB[nb].orgR;
+		delete[] bufferAB[nb].rTrue;
+		delete[] bufferAB[nb].rrDiff;
 	}
-	delete[] buffer;
+	delete[] bufferAA;
+	delete[] bufferBB;
+	delete[] bufferAB;
 	delete[] avgAcfVel;
 	for (int nb = 0; nb < nBuffAcf; nb++) {
 		delete[] vacBuff[nb].acfVel;
@@ -173,6 +197,27 @@ void setParams() {
 }
 
 void initAtoms() {
+	mass2 = 1.0;
+	mRatio = 1.0;
+	mass1 = mass2 * mRatio;
+
+	nMolA = 0;
+	nMolB = 0;
+	for (int n = 0; n < nMol; n++) {
+		if (n % 5 == 0) {
+			mol[n].type = 2;
+			nMolB++;
+			mol[n].mass = mass2;
+		} else {
+			mol[n].type = 1;
+			nMolA++;
+			mol[n].mass = mass1;
+		}
+	}
+	nAlpha = nMolA / double(nMol);
+	nBeta = nMolB / double(nMol);
+	Q = 1.0/(nAlpha*nBeta)*Sqr((mRatio*nAlpha)+nBeta);
+
 	vecR c, gap;
 	int n = 0;
 	vecDiv(gap, region, initUcell);
@@ -206,20 +251,20 @@ void initAtoms() {
 
 	// radom velocity generator
 	std::default_random_engine rand_gen;
-	std::normal_distribution<real> normal_dist(0.0, 1.0);
+	std::normal_distribution<double> normal_dist(0.0, 1.0);
 
-	vecSet(velSum, 0, 0, 0);
+	vecSet(momSum, 0, 0, 0);
 	for (int i = 0; i < nMol; i++) {
 		vecSet(mol[i].vel, normal_dist(rand_gen),
 				normal_dist(rand_gen), normal_dist(rand_gen));
-		vecAdd(velSum, velSum, mol[i].vel);
+		vecScaleAdd(momSum, momSum, mol[i].mass, mol[i].vel);
 		// assign zero init. acceleration
 		vecSet(mol[i].acc, 0, 0, 0);
 	}
 
 	// account for COM shift
 	for (int i = 0; i < nMol; i++) {
-		vecScaleAdd(mol[i].vel, mol[i].vel, -1.0/nMol, velSum);
+		vecScaleAdd(mol[i].vel, mol[i].vel, -1.0/nMol, momSum);
 	}
 
 	// adjust temperature
@@ -227,12 +272,12 @@ void initAtoms() {
 }
 
 void rescaleVels() {
-	real velSqSum = 0;
+	double mv2sum = 0;
 	for (int i = 0; i < nMol; i++) {
-		velSqSum += vecLenSq(mol[i].vel);
+		mv2sum += mol[i].mass * vecLenSq(mol[i].vel);
 	}
 
-	real lambda = std::sqrt(3 * (nMol - 1) * temperature / velSqSum);
+	double lambda = std::sqrt(3 * (nMol - 1) * temperature / mv2sum);
 	for (int i = 0; i < nMol; i++) {
 		vecScale(mol[i].vel, lambda);
 	}
@@ -297,7 +342,8 @@ void singleStep(std::string dot_in) {
 	}
 
 	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepRdf == 0) {
-		evalRdf(dot_in);
+		//evalRdf(dot_in);
+		evalRdf_AB(dot_in);
 	}
 
 	if (stepCount >= stepEquil && (stepCount - stepEquil) % stepDiff == 0) {
@@ -326,7 +372,7 @@ void buildNebrList() {
 	vecR dr, invWid, rs, shift, cc, m1v, m2v;
 	vecR vecOffset[] = {{0,0,0}, {1,0,0}, {1,1,0}, {0,1,0}, {-1,1,0}, {0,0,1}, {1,0,1},
 			{1,1,1}, {0,1,1}, {-1,1,1}, {-1,0,1}, {-1,-1,1}, {0,-1,1}, {1,-1,1}};
-	real rrNebr, rr;
+	double rrNebr, rr;
 
 	rrNebr = Sqr(rCut + rNebrShell);
 	nebrTabLen = 0;
@@ -410,7 +456,7 @@ void computeForces() {
 	vecR dr, invWid, rs, shift, cc, m1v, m2v;
 	vecR vecOffset[] = {{0,0,0}, {1,0,0}, {1,1,0}, {0,1,0}, {-1,1,0}, {0,0,1}, {1,0,1},
 			{1,1,1}, {0,1,1}, {-1,1,1}, {-1,0,1}, {-1,-1,1}, {0,-1,1}, {1,-1,1}};
-	real fcVal, rr, rrCut, rri, rri3;
+	double fcVal, rr, rrCut, rri, rri3;
 
 	rrCut = Sqr(rCut);
 	// resetting the acc. values since they are incremented later on
@@ -431,12 +477,23 @@ void computeForces() {
 			vecWrapAll(dr, region);
 			rr = vecLenSq(dr);
 			if (rr < rrCut) {
-				rri = 1.0 / rr;
-				rri3 = Cub(rri);
-				fcVal = 48.0 * rri3 * (rri3 - 0.5) * rri;
-				vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal, dr);
-				vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal, dr);
-				uSum += 4.0 * rri3 * (rri3 - 1.0);
+				if (mol[j1].type == 1 && mol[j2].type == 1) {
+					eps = epsAA;
+					sig = sigAA;
+				} else if (mol[j1].type == 2 && mol[j2].type == 2) {
+					eps = epsBB;
+					sig = sigBB;
+				} else if ((mol[j1].type == 1 && mol[j2].type == 2)
+					|| (mol[j1].type == 2 && mol[j2].type == 1)) {
+					eps = epsAA;
+					sig = sigBB;
+				}
+				fcVal = 48.0 * eps * std::pow(sig, 12) / std::pow(rr, 7)
+					- 24.0 * eps * std::pow(sig, 6) / std::pow(rr, 4);
+				vecScaleAdd(mol[j1].acc, mol[j1].acc, fcVal/mol[j1].mass, dr);
+				vecScaleAdd(mol[j2].acc, mol[j2].acc, -fcVal/mol[j2].mass, dr);
+				uSum += 4.0 * eps * std::pow(sig, 12) / std::pow(rr, 6)
+					- 4.0 * eps * std::pow(sig, 6) / std::pow(rr, 3);
 				virSum += fcVal * rr;
 			}
 		}
@@ -516,11 +573,11 @@ void computeForces() {
 }
 
 void evalProps() {
-	vecSet(velSum, 0, 0, 0);
-	real v2, v2sum = 0, v2max = 0;
+	vecSet(momSum, 0, 0, 0);
+	double v2, v2sum = 0, v2max = 0;
 
 	for (int i = 0; i < nMol; i++) {
-		vecAdd(velSum, velSum, mol[i].vel);
+		vecScaleAdd(momSum, momSum, mol[i].mass, mol[i].vel);
 		v2 = vecLenSq(mol[i].vel);
 		v2sum += v2;
 		v2max = std::max(v2max, v2);
@@ -541,7 +598,7 @@ void printSummary(std::string dot_in) {
 	std::ofstream outputFile;
 	outputFile.open(dot_out, std::ofstream::app);
 	outputFile << stepCount << '\t' << timeNow << '\t'
-		<< std::sqrt(vecLenSq(velSum))/nMol << '\t'
+		<< std::sqrt(vecLenSq(momSum))/nMol << '\t'
 		<< kinEnergy.sum << '\t' << totEnergy.sum << '\t'
 		<< pressure.sum << '\t' << latticeCorr << '\n';
 	outputFile.close();
@@ -565,58 +622,9 @@ void posDump(std::string dot_in) {
 	dumpFile.close();
 }
 
-void evalRdf(std::string dot_in) {
-	vecR dr;
-	real deltaR, normFac, rr;
-
-	if (countRdf == 0) {
-		for (int n = 0; n < sizeHistRdf; n++) {
-			histRdf[n] = 0;
-		}
-	}
-	deltaR = rangeRdf / sizeHistRdf;
-
-	for (int j1 = 0; j1 < nMol - 1; j1++) {
-		for (int j2 = j1 + 1; j2 < nMol; j2++) {
-			vecSub(dr, mol[j1].r, mol[j2].r);
-			vecWrapAll(dr, region);
-			rr = vecLenSq(dr);
-			if (rr < Sqr(rangeRdf)) {
-				int n = std::sqrt(rr) / deltaR;
-				histRdf[n]++;
-			}
-		}
-	}
-
-	countRdf++;
-	if (countRdf == limitRdf) {
-		normFac = vecProd(region)
-			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr(nMol) * countRdf);
-		for (int n = 0; n < sizeHistRdf; n++) {
-			histRdf[n] *= normFac / Sqr(n - 0.5);
-		}
-		printRdf(dot_in);
-		countRdf = 0;
-	}
-}
-
-void printRdf(std::string dot_in) {
-	std::string dot_rdf = dot_in.erase(dot_in.length()-2).append("rdf");
-	std::ofstream rdfFile;
-	rdfFile.open(dot_rdf, std::ofstream::app);
-
-	rdfFile << "RDF\n";
-	for (int n = 0; n < sizeHistRdf; n++) {
-		real rb = (n + 0.5) * rangeRdf / sizeHistRdf;
-		rdfFile << rb << '\t' << histRdf[n] << '\n';
-	}
-
-	rdfFile.close();
-}
-
 void evalRdf_AB(std::string dot_in) {
 	vecR dr;
-	real deltaR, normFacAA, normFacBB, normFacAB, rr;
+	double deltaR, normFacAA, normFacBB, normFacAB, rr;
 
 	if (countRdf == 0) {
 		for (int n = 0; n < sizeHistRdf; n++) {
@@ -638,11 +646,10 @@ void evalRdf_AB(std::string dot_in) {
 					histRdfAA[n]++;
 				} else if (mol[j1].type == 2 && mol[j2].type == 2) {
 					histRdfBB[n]++;
-				} else if ((mol[j1].type == 1 && mol[j2].type == 1)
+				} else if ((mol[j1].type == 1 && mol[j2].type == 2)
 					|| (mol[j1].type == 2 && mol[j2].type == 1)) {
 					histRdfAB[n]++;
 				}
-				histRdf[n]++;
 			}
 		}
 	}
@@ -650,11 +657,11 @@ void evalRdf_AB(std::string dot_in) {
 	countRdf++;
 	if (countRdf == limitRdf) {
 		normFacAA = vecProd(region)
-			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr(percA*nMol) * countRdf);
+			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr(nAlpha*nMol) * countRdf);
 		normFacBB = vecProd(region)
-			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr((1.0-percA)*nMol) * countRdf);
+			/ (2.0 * 3.141592654 * Cub(deltaR) * Sqr(nBeta*nMol) * countRdf);
 		normFacAB = vecProd(region)
-			/ (2.0 * 3.141592654 * Cub(deltaR) * 2.0 * (percA*nMol*(1.0-percA)*nMol) * countRdf);
+			/ (2.0 * 3.141592654 * Cub(deltaR) * 2.0 * (nAlpha*nMol*nBeta*nMol) * countRdf);
 		for (int n = 0; n < sizeHistRdf; n++) {
 			histRdfAA[n] *= normFacAA / Sqr(n + 0.5);
 			histRdfBB[n] *= normFacBB / Sqr(n + 0.5);
@@ -666,13 +673,13 @@ void evalRdf_AB(std::string dot_in) {
 }
 
 void printRdf_AB(std::string dot_in) {
-	std::string dot_rdf = dot_in.erase(dot_in.length()-2).append("abRdf");
+	std::string dot_rdf = dot_in.erase(dot_in.length()-2).append("rdf");
 	std::ofstream rdfFile;
 	rdfFile.open(dot_rdf, std::ofstream::app);
 
 	rdfFile << "RDF AA BB AB\n";
 	for (int n = 0; n < sizeHistRdf; n++) {
-		real rb = (n + 0.5) * rangeRdf / sizeHistRdf;
+		double rb = (n + 0.5) * rangeRdf / sizeHistRdf;
 		rdfFile << rb << '\t'
 			<< histRdfAA[n] << '\t'
 			<< histRdfBB[n] << '\t'
@@ -684,7 +691,7 @@ void printRdf_AB(std::string dot_in) {
 
 void evalLatticeCorr() {
 	vecR kVec;
-	real si = 0, sr = 0, t;
+	double si = 0, sr = 0, t;
 
 	kVec.x = 2.0 * 3.141592654 * initUcell.x / region.x;
 	kVec.y = - kVec.x;
@@ -701,7 +708,9 @@ void evalLatticeCorr() {
 
 void initDiffusion() {
 	for (int nb = 0; nb < nBuffDiff; nb++) {
-		buffer[nb].count = -nb * nValDiff / nBuffDiff;
+		bufferAA[nb].count = -nb * nValDiff / nBuffDiff;
+		bufferBB[nb].count = -nb * nValDiff / nBuffDiff;
+		bufferAB[nb].count = -nb * nValDiff / nBuffDiff;
 	}
 	zeroDiffusion();
 }
@@ -709,51 +718,79 @@ void initDiffusion() {
 void zeroDiffusion() {
 	countDiffAvg = 0;
 	for (int j = 0; j < nValDiff; j++) {
-		rrDiffAvg[j] = 0;
+		rrDiffAvgAA[j] = 0;
+		rrDiffAvgBB[j] = 0;
+		rrDiffAvgAB[j] = 0;
 	}
 }
 
 void evalDiffusion(std::string dot_in) {
-	vecR dr;
+	vecR dr, rSum;
 	for (int nb = 0; nb < nBuffDiff; nb++) {
-		if (buffer[nb].count == 0) {
+		if (bufferAA[nb].count == 0) {
 			for (int n = 0; n < nMol; n++) {
-				buffer[nb].orgR[n] = mol[n].r;
-				buffer[nb].rTrue[n] = mol[n].r;
+				if (mol[n].type == 1) {
+					bufferAA[nb].orgR[n] = mol[n].r;
+					bufferAA[nb].rTrue[n] = mol[n].r;
+				} else if (mol[n].type == 2) {
+					bufferBB[nb].orgR[n] = mol[n].r;
+					bufferBB[nb].rTrue[n] = mol[n].r;
+				}
 			}
 		}
-		if (buffer[nb].count >= 0) {
-			int ni = buffer[nb].count;
-			buffer[nb].rrDiff[ni] = 0;
+		if (bufferAA[nb].count >= 0) {
+			vecSet(rSum, 0, 0, 0);
+			int ni = bufferAA[nb].count;
+			bufferAA[nb].rrDiff[ni] = 0;
+			bufferBB[nb].rrDiff[ni] = 0;
+			bufferAB[nb].rrDiff[ni] = 0;
 			for (int n = 0; n < nMol; n++) {
-				vecSub(dr, buffer[nb].rTrue[n], mol[n].r);
-				vecDiv(dr, dr, region);
-				vecRound(dr);
-				vecMul(dr, dr, region);
-				vecAdd(buffer[nb].rTrue[n], mol[n].r, dr);
-				vecSub(dr, buffer[nb].rTrue[n], buffer[nb].orgR[n]);
-				buffer[nb].rrDiff[ni] += vecLenSq(dr);
+				if (mol[n].type == 1) {
+					vecSub(dr, bufferAA[nb].rTrue[n], mol[n].r);
+					vecDiv(dr, dr, region);
+					vecRound(dr);
+					vecMul(dr, dr, region);
+					vecAdd(bufferAA[nb].rTrue[n], mol[n].r, dr);
+					vecSub(dr, bufferAA[nb].rTrue[n], bufferAA[nb].orgR[n]);
+					bufferAA[nb].rrDiff[ni] += vecLenSq(dr);
+					vecAdd(rSum, rSum, dr);
+				} else if (mol[n].type == 2) {
+					vecSub(dr, bufferBB[nb].rTrue[n], mol[n].r);
+					vecDiv(dr, dr, region);
+					vecRound(dr);
+					vecMul(dr, dr, region);
+					vecAdd(bufferBB[nb].rTrue[n], mol[n].r, dr);
+					vecSub(dr, bufferBB[nb].rTrue[n], bufferBB[nb].orgR[n]);
+					bufferBB[nb].rrDiff[ni] += vecLenSq(dr);
+				}
 			}
+			bufferAB[nb].rrDiff[ni] = vecLenSq(rSum);
 		}
-		buffer[nb].count++;
+		bufferAA[nb].count++;
 	}
 
 	accumDiffusion(dot_in);
 }
 
 void accumDiffusion(std::string dot_in) {
-	real fac;
+	double facAA, facBB, facAB;
 	for (int nb = 0; nb < nBuffDiff; nb++) {
-		if (buffer[nb].count == nValDiff) {
+		if (bufferAA[nb].count == nValDiff) {
 			for (int j = 0; j < nValDiff; j++) {
-				rrDiffAvg[j] += buffer[nb].rrDiff[j];
+				rrDiffAvgAA[j] += bufferAA[nb].rrDiff[j];
+				rrDiffAvgBB[j] += bufferBB[nb].rrDiff[j];
+				rrDiffAvgAB[j] += bufferAB[nb].rrDiff[j];
 			}
-			buffer[nb].count = 0;
+			bufferAA[nb].count = 0;
 			countDiffAvg++;
 			if (countDiffAvg == limitDiffAvg) {
-				fac = 1.0 / (nDim * 2 * nMol * stepDiff * deltaT * limitDiffAvg);
+				facAA = 1.0 / (nDim * 2 * nMolA * stepDiff * deltaT * limitDiffAvg);
+				facBB = 1.0 / (nDim * 2 * nMolB * stepDiff * deltaT * limitDiffAvg);
+				facAB = Q / (nDim * 2 * nMol * stepDiff * deltaT * limitDiffAvg);
 				for (int k = 1; k < nValDiff; k++) {
-					rrDiffAvg[k] *= fac / k;
+					rrDiffAvgAA[k] *= facAA / k;
+					rrDiffAvgBB[k] *= facBB / k;
+					rrDiffAvgAB[k] *= facAB / k;
 				}
 				printDiffusion(dot_in);
 				zeroDiffusion();
@@ -767,11 +804,14 @@ void printDiffusion(std::string dot_in) {
 	std::ofstream dfsFile;
 	dfsFile.open(dot_dfs, std::ofstream::app);
 
-	real tVal;
-	dfsFile << "Diffusion\n";
+	double tVal;
+	dfsFile << "Diffusion AA BB AB\n";
 	for (int j = 0; j < nValDiff; j++) {
 		tVal = j * stepDiff * deltaT;
-		dfsFile << tVal << '\t' << rrDiffAvg[j] << '\n';
+		dfsFile << tVal << '\t'
+			<< rrDiffAvgAA[j] << '\t'
+			<< rrDiffAvgBB[j] << '\t'
+			<< rrDiffAvgAB[j] << '\n';
 	}
 
 	dfsFile.close();
@@ -812,7 +852,7 @@ void evalVacf(std::string dot_in) {
 }
 
 void accumVacf(std::string dot_in) {
-	real fac;
+	double fac;
 	for (int nb = 0; nb < nBuffAcf; nb++) {
 		if (vacBuff[nb].count == nValAcf) {
 			for (int j = 0; j < nValAcf; j++) {
@@ -834,8 +874,8 @@ void accumVacf(std::string dot_in) {
 	}
 }
 
-real integrate(real *f, int nf) {
-	real s = 0.5 * (f[0] + f[nf-1]);
+double integrate(double *f, int nf) {
+	double s = 0.5 * (f[0] + f[nf-1]);
 	for (int i = 1; i < nf-1; i++) {
 		s += f[i];
 	}
@@ -847,7 +887,7 @@ void printVacf(std::string dot_in) {
 	std::ofstream acfFile;
 	acfFile.open(dot_acf, std::ofstream::app);
 
-	real tVal;
+	double tVal;
 	acfFile << "VACF\n";
 	for (int j = 0; j < nValAcf; j++) {
 		tVal = j * stepAcf * deltaT;

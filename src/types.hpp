@@ -1,27 +1,25 @@
-typedef double real;
-
 typedef struct {
-	real x, y, z;
+	double x, y, z;
 } vecR;
 
 typedef struct {
 	vecR r, vel, acc;
-	real mass;
+	double mass;
 	int type;
 } Mol;
 
 typedef struct {
-	real val, sum, sum2;
+	double val, sum, sum2;
 } Prop;
 
 typedef struct {
 	vecR *orgR, *rTrue;
-	real *rrDiff;
+	double *rrDiff;
 	int count;
 } Tbuff;
 
 typedef struct {
 	vecR *orgVel;
-	real *acfVel;
+	double *acfVel;
 	int count;
 } Vbuff;

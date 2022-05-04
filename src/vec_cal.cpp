@@ -2,15 +2,15 @@
 #include <algorithm>
 #include "types.hpp"
 
-real Sqr(real x) {
+double Sqr(double x) {
 	return x * x;
 }
 
-real Cub(real x) {
+double Cub(double x) {
 	return x * x * x;
 }
 
-void vecSet(vecR &vec, real cx, real cy, real cz) {
+void vecSet(vecR &vec, double cx, double cy, double cz) {
 	vec.x = cx;
 	vec.y = cy;
 	vec.z = cz;
@@ -52,31 +52,31 @@ void vecDiv(vecR &div, vecR u, vecR v) {
 	div.z = u.z / v.z;
 }
 
-real vecProd(vecR u) {
+double vecProd(vecR u) {
 	return u.x * u.y * u.z;
 }
 
-real vecDot(vecR u, vecR v) {
+double vecDot(vecR u, vecR v) {
 	return (u.x * v.x) + (u.y * v.y) + (u.z * v.z);
 }
 
-real vecLenSq(vecR u) {
+double vecLenSq(vecR u) {
 	return vecDot(u, u);
 }
 
-void vecScale(vecR &vec, real s) {
+void vecScale(vecR &vec, double s) {
 	vec.x *= s;
 	vec.y *= s;
 	vec.z *= s;
 }
 
-void vecScaleCopy(vecR &vec, real s, vecR u) {
+void vecScaleCopy(vecR &vec, double s, vecR u) {
 	vec.x = s * u.x;
 	vec.y = s * u.y;
 	vec.z = s * u.z;
 }
 
-void vecScaleAdd(vecR &vec, vecR u, real s, vecR v) {
+void vecScaleAdd(vecR &vec, vecR u, double s, vecR v) {
 	vec.x = u.x + s * v.x;
 	vec.y = u.y + s * v.y;
 	vec.z = u.z + s * v.z;
