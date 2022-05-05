@@ -34,7 +34,6 @@ def dot_draw(fileName, itr):
         x.append(float(line.split()[0]))
         y.append(float(line.split()[msdType]))
 
-    y = [i/450 for i in y]
     plt.plot(x, y, color=plt.cm.turbo(itr/5), label=f'{temp} (TW)')
 
 files = sys.argv[2:]

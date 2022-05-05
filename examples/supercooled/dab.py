@@ -19,8 +19,11 @@ def dot_draw(fileName, itr):
         c.append(float(line.split()[3]))
 
     d = [0.2*i + 0.8*j for i, j in zip(a, b)]
-    plt.plot(x, c, label=f'{temp} ab')
-    plt.plot(x, d, label=f'{temp} fo')
+    plt.plot(x, c, color=plt.cm.turbo(itr/5),
+            ls='-', label=f'{temp} '+r'$D_{AB}$')
+    plt.plot(x, d, color=plt.cm.turbo(itr/5),
+            ls=':', label=f'{temp} rel.')
+    print(f'{a[-1]} & {b[-1]} & {d[-1]} & {c[-1]}')
 
 files = sys.argv[1:]
 
@@ -28,5 +31,8 @@ for file, itr in zip(files, range(5)):
     print(file, itr)
     dot_draw(file, itr)
 
+plt.xlabel('time')
+plt.ylabel('Binary diffusion coefficient')
 plt.legend()
+plt.savefig('trial.pdf')
 plt.show()
