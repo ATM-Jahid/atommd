@@ -77,7 +77,6 @@ int main(int argc, char **argv) {
 	stepAdjTemp = 20;
 	stepAvg = 50;
 	stepDump = 100;
-	deltaT = 0.01;
 
 	// rdf parameters
 	limitRdf = 200;
@@ -99,7 +98,7 @@ int main(int argc, char **argv) {
 
 	// input from user
 	std::ifstream inputFile(dot_in);
-	inputFile >> temperature >> density >> num_atoms >> mRatio;
+	inputFile >> temperature >> density >> num_atoms >> mRatio >> deltaT;
 	double num_unit_cell = int(std::pow(num_atoms/4, 1/3.0)+0.5);
 	initUcell = {num_unit_cell, num_unit_cell, num_unit_cell};
 
@@ -208,12 +207,12 @@ void initAtoms() {
 	for (int n = 0; n < nMol; n++) {
 		if (n % 5 == 0) {
 			mol[n].type = 2;
-			nMolB++;
 			mol[n].mass = mass2;
+			nMolB++;
 		} else {
 			mol[n].type = 1;
-			nMolA++;
 			mol[n].mass = mass1;
+			nMolA++;
 		}
 	}
 	nAlpha = nMolA / double(nMol);
@@ -266,7 +265,7 @@ void initAtoms() {
 
 	// account for COM shift
 	for (int i = 0; i < nMol; i++) {
-		vecScaleAdd(mol[i].vel, mol[i].vel, -1.0/nMol, momSum);
+		vecScaleAdd(mol[i].vel, mol[i].vel, -1.0/mol[i].mass/nMol, momSum);
 	}
 
 	// adjust temperature
@@ -713,9 +712,9 @@ void printMsd(std::string dot_in) {
 	for (int j = 0; j < nValDiff; j++) {
 		tVal = j * stepDiff * deltaT;
 		msdFile << tVal << '\t'
-			<< rrDiffAvgAA[j] / nMolA << '\t'
-			<< rrDiffAvgBB[j] / nMolB << '\t'
-			<< rrDiffAvgAB[j] / nMol << '\n';
+			<< rrDiffAvgAA[j] / limitDiffAvg / nMolA << '\t'
+			<< rrDiffAvgBB[j] / limitDiffAvg / nMolB << '\t'
+			<< rrDiffAvgAB[j] / limitDiffAvg / nMol << '\n';
 	}
 
 	msdFile.close();
