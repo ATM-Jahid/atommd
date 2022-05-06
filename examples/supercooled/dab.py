@@ -14,9 +14,9 @@ def dot_draw(fileName, itr):
     x = []; a = []; b = []; c= []
     for line in jar:
         x.append(float(line.split()[0]))
-        a.append(float(line.split()[1]))
-        b.append(float(line.split()[2]))
-        c.append(float(line.split()[3]))
+        a.append(float(line.split()[8]))
+        b.append(float(line.split()[9]))
+        c.append(float(line.split()[10]))
 
     d = [0.2*i + 0.8*j for i, j in zip(a, b)]
     plt.plot(x, c, color=plt.cm.turbo(itr/5),

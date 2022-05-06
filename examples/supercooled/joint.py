@@ -31,12 +31,12 @@ def dot_draw(fileName, itr):
 
     ind = fileName.find('_') + 1
     temp = float(fileName[ind:ind+3])
-    jar = jar[2:]
+    jar = jar[4:]
 
     x = []; y = []
     for line in jar:
-        x.append(float(line.split()[0]))
-        y.append(float(line.split()[rdfType]))
+        x.append(float(line.split()[1]))
+        y.append(float(line.split()[1+rdfType]))
 
     y = [i + yshift * itr for i in y]
     plt.plot(x, y, color=plt.cm.turbo(itr/5), label=f'{temp} (TW)')
@@ -58,5 +58,5 @@ match rdfType:
     case 3:
         plt.ylabel(r'$g_{AB}(r)$')
 plt.legend(loc='upper right')
-plt.savefig('trial.pdf')
+plt.savefig('gab.pdf')
 plt.show()

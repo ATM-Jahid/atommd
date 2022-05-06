@@ -12,9 +12,9 @@ def dot_draw(fileName, itr):
     x = []; y = []
     for line in jar:
         x.append(float(line.split()[0]))
-        y.append(float(line.split()[2]))
+        y.append(float(line.split()[8]))
 
-    y = [i + (4-itr) for i in y]
+    x = [(i-50000)*0.01 for i in x]
     plt.plot(x, y)
 
 files = sys.argv[1:]
